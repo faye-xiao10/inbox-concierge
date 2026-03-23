@@ -1,1 +1,172 @@
 @import 'tailwindcss';
+
+/* ─── Design tokens ─────────────────────────────────────────────────────────── */
+
+:root {
+  /* Backgrounds */
+  --bg-primary: #faf5ee;
+  --bg-secondary: #f0e8da;
+  --bg-tertiary: #e6dccc;
+  --bg-elevated: #ffffff;
+
+  /* Text */
+  --text-primary: #3b3226;
+  --text-secondary: #7a6e5d;
+  --text-tertiary: #a89b8a;
+
+  /* Accent */
+  --accent-primary: #b8860b;
+  --accent-hover: #9a7209;
+  --accent-subtle: rgba(184, 134, 11, 0.1);
+
+  /* Semantic */
+  --color-success: #5b8c5a;
+  --color-warning: #c4933f;
+  --color-error: #b5544e;
+  --color-info: #5b7fa5;
+
+  /* Borders */
+  --border-default: #ddd2c0;
+  --border-subtle: #e8dfd0;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(59, 50, 38, 0.06);
+  --shadow-md: 0 4px 12px rgba(59, 50, 38, 0.08);
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* Font families — Next.js font variables override these at runtime */
+  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-heading: 'Fraunces', 'Georgia', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ─── Base styles ────────────────────────────────────────────────────────────── */
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Tailwind v4 theme extension ────────────────────────────────────────────── */
+/* Registers tokens so Tailwind generates utilities (bg-*, text-*, etc.)        */
+
+@theme {
+  /* Accent colors — usable as bg-accent, text-accent, border-accent */
+  --color-accent: #b8860b;
+  --color-accent-hover: #9a7209;
+  --color-accent-subtle: rgba(184, 134, 11, 0.1);
+
+  /* Semantic colors */
+  --color-success: #5b8c5a;
+  --color-warning: #c4933f;
+  --color-error: #b5544e;
+  --color-info: #5b7fa5;
+
+  /* Font families */
+  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-heading: 'Fraunces', 'Georgia', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(59, 50, 38, 0.06);
+  --shadow-md: 0 4px 12px rgba(59, 50, 38, 0.08);
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+}
+
+/* ─── Semantic utility classes ───────────────────────────────────────────────── */
+/* Backgrounds and text map to different colors, so we define them via @utility  */
+
+@utility bg-primary {
+  background-color: var(--bg-primary);
+}
+@utility bg-secondary {
+  background-color: var(--bg-secondary);
+}
+@utility bg-tertiary {
+  background-color: var(--bg-tertiary);
+}
+@utility bg-elevated {
+  background-color: var(--bg-elevated);
+}
+
+@utility text-primary {
+  color: var(--text-primary);
+}
+@utility text-secondary {
+  color: var(--text-secondary);
+}
+@utility text-tertiary {
+  color: var(--text-tertiary);
+}
+
+@utility accent-primary {
+  color: var(--accent-primary);
+}
+
+@utility border-default {
+  border-color: var(--border-default);
+}
+@utility border-subtle {
+  border-color: var(--border-subtle);
+}
+
+@utility shadow-sm {
+  box-shadow: var(--shadow-sm);
+}
+@utility shadow-md {
+  box-shadow: var(--shadow-md);
+}
+
+@utility rounded-sm {
+  border-radius: var(--radius-sm);
+}
+@utility rounded-md {
+  border-radius: var(--radius-md);
+}
+@utility rounded-lg {
+  border-radius: var(--radius-lg);
+}
+@utility rounded-full {
+  border-radius: var(--radius-full);
+}
+
+/* ─── Typography utilities ───────────────────────────────────────────────────── */
+
+@utility heading-xl {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+@utility heading-lg {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+@utility heading-md {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+@utility body-sm {
+  font-size: 13px;
+  font-weight: 400;
+}
+@utility caption {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
