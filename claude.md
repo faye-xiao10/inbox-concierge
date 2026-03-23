@@ -1,66 +1,63 @@
 # CLAUDE.md
 
 ## Project
-AI-powered Gmail triage that classifies your inbox into smart buckets using a 4-tier pipeline (Gmail categories, domain matching, semantic similarity, batch LLM) with a D3 force-directed cluster visualization. Built as a take-home for Tenex Forward Deployed Engineer role.
+AI-powered Gmail triage. 4-tier classification pipeline (Gmail categories → domain matching → semantic similarity → batch LLM). D3 force-directed cluster visualization. Take-home for Tenex FDE role.
 
 ## Stack
-Next.js (App Router), React 19, TypeScript, Drizzle ORM, Neon Postgres + pgvector, Claude Sonnet 4 + Gemini 2.0 Flash, Gemini embedding-001, umap-js, D3.js, JOSE/JWT, Tailwind CSS + Framer Motion, ESLint + Prettier, deployed to Vercel.
-
-
-
-## Conventions
-- Path alias: `@/` -> `src/`
-- Server components by default, client components only for interactivity
-- All LLM calls use tool use (not prompt-based JSON)
-- All API keys go through server-side routes, never expose to client
-- Drizzle schema in `src/db/schema/`, one file per table
-- One file per pipeline tier in `src/lib/pipeline/`. No god files. Keep files under 200 lines.
-- Every external API call wrapped in try/catch with meaningful error messages
-- Descriptive variable names. No abbreviations except db, req, res.
+Next.js App Router · React 19 · TypeScript · Drizzle ORM · Neon Postgres + pgvector · Claude Sonnet 4 + Gemini 2.0 Flash · Gemini embedding-001 · umap-js · D3.js · JOSE/JWT · Tailwind CSS · Framer Motion · Vercel
 
 ## Commands
 ```bash
-pnpm dev
-pnpm build
-pnpm lint
-pnpm format
+pnpm dev / build / lint / format
 pnpm tsc --noEmit
-pnpm db:migrate
+pnpm db:generate / db:migrate / db:studio
 ```
 
+## Conventions
+- `@/` → `src/`
+- Server components by default; `'use client'` only for interactivity
+- All LLM calls use tool use, never prompt-based JSON
+- API keys server-side only, never exposed to client
+- Drizzle schema: `src/db/schema/`, one file per table
+- Pipeline tiers: `src/lib/pipeline/`, one file per tier, max 200 lines per file
+- Every external API call in try/catch with meaningful error messages
+- Descriptive variable names, no abbreviations except: db, req, res, tx
+- All UI follows `STYLE.md` — no ad-hoc colors or spacing
+
 ## Branching
-- New features go on `feature/[name]` branches, merge into `dev`, never directly to `main`
-- Descriptive commit messages summarizing what changed and why
-- Always check current branch with `git branch` before making changes. If on main, create `feature/[name]` first.
+- Features on `feature/[name]` → merge to `dev` → never direct to `main`
+- Always run `git branch` before starting. If on main/dev, create feature branch first.
 
 ## Session Protocol
-Start of every session: Read `.claude/docs/built.md` to understand current project state before doing anything else.
 
-End of every feature:
-1. Run `find src -type f | sort` to get current file tree
-2. Update `.claude/docs/built.md` with what was built, files changed, and refreshed file tree
-3. Update `.claude/docs/data-model.md` if any tables, fields, or indexes changed
-4. Run `pnpm lint` and `pnpm tsc --noEmit`, fix any errors
-5. Commit doc updates along with the feature commit
+**Start of session:**
+1. Read `BUILT.md` to understand current state
+2. Only read additional docs if needed for this specific step:
+   - Writing queries or schema changes → read `DATA_MODEL.md`
+   - Unclear on pipeline/API connections → read `ARCHITECTURE.md`
+   - Building UI → read `STYLE.md`
+   - Don't read docs you don't need
 
-Trigger phrases ("wrap up", "done", "update docs", "end of feature") = run end-of-feature protocol immediately.
+**During session:**
+- Run `/compact` at natural breakpoints (after completing a subtask, ~60% context)
+- Run `/cost` periodically to monitor context usage
 
+**End of session** (triggers: "wrap up", "done", "update docs", "end of feature"):
+1. `pnpm lint && pnpm tsc --noEmit` — fix all errors
+2. `find src -type f | sort` — get current file tree
+3. Update `BUILT.md`: what was built, files changed, current file tree
+4. Update `DATA_MODEL.md` only if schema changed
+5. 5. `git add -A` then ONE commit with everything — feature files + docs together. Format: "feat/fix/docs/refactor: Step N — description" + bullet points per file.
 
-## Additional Docs
-Before starting any task, check if relevant docs exist in `.claude/docs/`:
-- `PLAN.md` -- build order + acceptance criteria
-- `ARCHITECTURE.md` -- pipeline, D3, API routes, data flow
-- `DATA_MODEL.md` -- Drizzle schema and table relationships
-- `BUILT.md` -- current progress and file tree
-
-Read `DATA_MODEL.md` when writing queries or schema. Read `ARCHITECTURE.md` if unclear on how a feature connects to the pipeline or D3 layer.
+## Docs (load only what's needed)
+| File | Load when |
+|------|-----------|
+| `PLAN.md` | Starting a new step, checking acceptance criteria |
+| `ARCHITECTURE.md` | Unclear how a feature connects to pipeline or D3 |
+| `DATA_MODEL.md` | Writing queries, migrations, or schema changes |
+| `BUILT.md` | Start of every session (always) |
+| `STYLE.md` | Building any UI component |
 
 ## Environment Variables
-Never log, echo, or commit env values. Core vars include: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DATABASE_URL`, `SESSION_SECRET`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `NEXT_PUBLIC_URL`. See `.env.local.example` for the full list.
-
-## Linting
-
-ESLint + Prettier configured at project init. Enforced on every file:
-- `pnpm lint` -- ESLint
-- `pnpm format` -- Prettier
-- `pnpm tsc --noEmit` -- Type check
+Never log, echo, or commit values. See `.env.local.example` for full list.
+Core: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DATABASE_URL`, `SESSION_SECRET`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `NEXT_PUBLIC_URL`
