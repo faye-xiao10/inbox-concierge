@@ -22,6 +22,15 @@ Step 1 complete: scaffold and tooling are in place. Ready to build Step 2 (DB sc
 - ESLint pinned to 9.x (eslint-plugin-react incompatible with ESLint 10)
 - Tailwind 4 uses `@import 'tailwindcss'` in globals.css (no tailwind.config.js needed)
 
+## Completed Steps
+
+### Step: Style System (branch: feature/style-system, commit: 91542cd)
+- Loaded Fraunces (700), Source Sans 3 (400/500/600), JetBrains Mono (400) via next/font/google; variables injected on `<html>`
+- `globals.css`: all STYLE.md CSS variables in `:root`; `@theme` for accent/semantic/font/shadow/radius tokens; `@utility` for bg-primary/secondary/tertiary/elevated, text-primary/secondary/tertiary, border-default/subtle, shadow-sm/md, rounded-sm/md/lg/full, and typography utilities
+- `src/components/ui/button.tsx`: Primary, Secondary, Ghost variants; sm/md/lg sizes; forwardRef; 150ms transitions; focus-visible ring
+
+**Tailwind v4 note:** No `tailwind.config.ts` — theme extension is CSS-only via `@theme` and `@utility` directives. `@theme` is for tokens where all color utilities should work (bg/text/border share same value). `@utility` is for semantic tokens where bg ≠ text color.
+
 ## Current File Tree
 ```
 src/
@@ -29,6 +38,9 @@ src/
     globals.css
     layout.tsx
     page.tsx
+  components/
+    ui/
+      button.tsx
   lib/
     db/
       index.ts
