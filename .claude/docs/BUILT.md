@@ -1,60 +1,63 @@
 # Built
 
 ## Current Status
-Steps 1–2 + style system complete. Ready to build Step 3 (Google OAuth).
+Steps 1–3 + style system complete. Ready to build Step 4 (Google OAuth).
 
 ## Completed Steps
 
 ### Step 1: Scaffold + Tooling (commit: f154fbb)
-- Initialized Next.js 16 with App Router, TypeScript, Tailwind CSS 4, ESLint, src/ dir, `@/*` alias
-- Installed all deps: drizzle-orm, drizzle-kit, @neondatabase/serverless, pg, jose, framer-motion, d3, @types/d3, umap-js, @anthropic-ai/sdk, @google/generative-ai, prettier, eslint-config-prettier
-- Added scripts: db:generate, db:migrate, db:studio, format, typecheck
-- Created drizzle.config.ts, src/lib/db/index.ts, .env.local.example, .prettierrc, eslint.config.mjs
-- Placeholder home page
+- Next.js 16, TypeScript, Tailwind 4, ESLint, src/ dir, `@/*` alias
+- All deps installed; db:generate/migrate/studio, format, typecheck scripts
+- drizzle.config.ts, src/lib/db/index.ts, .env.local.example, .prettierrc, eslint.config.mjs
 
-**Notable adaptations:**
-- Next.js 16 removed `next lint` — lint script uses `eslint src` directly
-- ESLint pinned to 9.x (eslint-plugin-react incompatible with ESLint 10)
-- Tailwind 4 uses `@import 'tailwindcss'` in globals.css (no tailwind.config.js needed)
+**Adaptations:** Next.js 16 removed `next lint`; ESLint pinned to 9.x; Tailwind 4 is CSS-only.
 
 ### Style System (commit: 91542cd)
-- Loaded Fraunces/Source Sans 3/JetBrains Mono via next/font/google
-- globals.css: all STYLE.md CSS vars in `:root`; `@theme` for accent/semantic/font/shadow/radius; `@utility` for bg-primary/secondary/tertiary/elevated, text-primary/secondary/tertiary, border-default/subtle, typography classes
-- src/components/ui/button.tsx: Primary, Secondary, Ghost variants; sm/md/lg sizes; forwardRef; 150ms transitions
+- Fraunces/Source Sans 3/JetBrains Mono via next/font/google
+- globals.css: CSS vars in `:root`; `@theme` + `@utility` for Tailwind tokens
+- src/components/ui/button.tsx: Primary/Secondary/Ghost × sm/md/lg, forwardRef
 
-**Tailwind v4 note:** No tailwind.config.ts — theme extension via `@theme` and `@utility` in CSS.
+### Step 2: DB Schema (commit: 3b20421)
+- src/lib/db/schema/ — one file per table (users, buckets, category-exemplars, classifications, reclassification-log, ai-usage, relations)
+- src/lib/db/vector.ts — custom `vector(n)` type for pgvector
+- src/lib/db/setup.ts — `setupExtensions()` for `CREATE EXTENSION IF NOT EXISTS vector`
+- drizzle/setup.sql — vector ext + HNSW index SQL
+- Migration: drizzle/0000_clean_typhoid_mary.sql
 
-### Step 2: DB Schema (commit: 3b20421, branch: feature/step-2-schema)
-- Schema split into src/lib/db/schema/ (one file per table)
-- `src/lib/db/vector.ts`: custom `vector(n)` type via drizzle `customType` for pgvector
-- `src/lib/db/setup.ts`: `setupExtensions()` — runs `CREATE EXTENSION IF NOT EXISTS vector`
-- `drizzle/setup.sql`: documents vector ext + HNSW index upgrade SQL (must run before migrations)
-- `drizzle.config.ts`: updated to point at schema/index.ts
-- `src/lib/db/index.ts`: passes schema to drizzle() for relations support
-- Migration generated: `drizzle/0000_clean_typhoid_mary.sql`
+**HNSW note:** generated migration uses btree on embedding; replace with HNSW before prod (see drizzle/setup.sql).
 
-**HNSW index note:** The generated migration creates a btree index on `classifications.embedding`. Before production use, replace it with:
-```sql
-DROP INDEX IF EXISTS classifications_embedding_idx;
-CREATE INDEX classifications_embedding_hnsw_idx
-  ON classifications USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 64);
-```
-See `drizzle/setup.sql` for the full SQL.
+### Step 3: Demo Mode (commit: 4f4f5d8, branch: feature/step-3-demo-mode)
+- src/lib/session.ts — JWT via jose: signSession, verifySession, getSession; SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS
+- src/lib/db/seed-buckets.ts — DEFAULT_BUCKETS const + seedDefaultBuckets(userId); idempotent
+- src/fixtures/demo-threads.json — 20 threads (4 per bucket), UMAP coords clustered by bucket, securityFlags on one promo thread
+- src/lib/db/seed-demo.ts — strips non-DB `bucketName`, maps to bucketId, onConflictDoNothing upsert
+- src/app/api/auth/demo/route.ts — POST: find-or-create demo user → seed → session cookie → redirect /inbox
+- src/app/api/auth/signout/route.ts — POST: clears cookie → redirect /
+- src/app/page.tsx — landing page: Try Demo form + Sign in with Google link
+
+**Vercel env vars needed:** `SESSION_SECRET` (≥32 chars), `NEXT_PUBLIC_URL`
 
 ## Current File Tree
 ```
 src/
   app/
+    api/
+      auth/
+        demo/route.ts
+        signout/route.ts
     globals.css
     layout.tsx
     page.tsx
   components/
     ui/
       button.tsx
+  fixtures/
+    demo-threads.json
   lib/
     db/
       index.ts
+      seed-buckets.ts
+      seed-demo.ts
       setup.ts
       vector.ts
       schema/
@@ -66,6 +69,7 @@ src/
         reclassification-log.ts
         ai-usage.ts
         relations.ts
+    session.ts
 ```
 
 ## Known Issues
