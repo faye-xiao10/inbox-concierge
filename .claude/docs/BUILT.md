@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Step 1 complete: scaffold and tooling are in place. Ready to build Step 2 (DB schema + migrations).
+Steps 1–2 + style system complete. Ready to build Step 3 (Google OAuth).
 
 ## Completed Steps
 
@@ -9,27 +9,38 @@ Step 1 complete: scaffold and tooling are in place. Ready to build Step 2 (DB sc
 - Initialized Next.js 16 with App Router, TypeScript, Tailwind CSS 4, ESLint, src/ dir, `@/*` alias
 - Installed all deps: drizzle-orm, drizzle-kit, @neondatabase/serverless, pg, jose, framer-motion, d3, @types/d3, umap-js, @anthropic-ai/sdk, @google/generative-ai, prettier, eslint-config-prettier
 - Added scripts: db:generate, db:migrate, db:studio, format, typecheck
-- Created drizzle.config.ts (schema: src/lib/db/schema.ts, dialect: postgresql, out: ./drizzle)
-- Created src/lib/db/index.ts (drizzle instance via neon-http)
-- Created src/lib/db/schema.ts (placeholder)
-- Created .env.local.example
-- Created .prettierrc (semi, singleQuote, tabWidth: 2, trailingComma: all)
-- Created eslint.config.mjs (flat config: eslint-config-next + eslint-config-prettier)
-- Placeholder home page: "Inbox Concierge" / "Coming soon"
+- Created drizzle.config.ts, src/lib/db/index.ts, .env.local.example, .prettierrc, eslint.config.mjs
+- Placeholder home page
 
 **Notable adaptations:**
-- Next.js 16 removed `next lint` CLI command — lint script uses `eslint src` directly
+- Next.js 16 removed `next lint` — lint script uses `eslint src` directly
 - ESLint pinned to 9.x (eslint-plugin-react incompatible with ESLint 10)
 - Tailwind 4 uses `@import 'tailwindcss'` in globals.css (no tailwind.config.js needed)
 
-## Completed Steps
+### Style System (commit: 91542cd)
+- Loaded Fraunces/Source Sans 3/JetBrains Mono via next/font/google
+- globals.css: all STYLE.md CSS vars in `:root`; `@theme` for accent/semantic/font/shadow/radius; `@utility` for bg-primary/secondary/tertiary/elevated, text-primary/secondary/tertiary, border-default/subtle, typography classes
+- src/components/ui/button.tsx: Primary, Secondary, Ghost variants; sm/md/lg sizes; forwardRef; 150ms transitions
 
-### Step: Style System (branch: feature/style-system, commit: 91542cd)
-- Loaded Fraunces (700), Source Sans 3 (400/500/600), JetBrains Mono (400) via next/font/google; variables injected on `<html>`
-- `globals.css`: all STYLE.md CSS variables in `:root`; `@theme` for accent/semantic/font/shadow/radius tokens; `@utility` for bg-primary/secondary/tertiary/elevated, text-primary/secondary/tertiary, border-default/subtle, shadow-sm/md, rounded-sm/md/lg/full, and typography utilities
-- `src/components/ui/button.tsx`: Primary, Secondary, Ghost variants; sm/md/lg sizes; forwardRef; 150ms transitions; focus-visible ring
+**Tailwind v4 note:** No tailwind.config.ts — theme extension via `@theme` and `@utility` in CSS.
 
-**Tailwind v4 note:** No `tailwind.config.ts` — theme extension is CSS-only via `@theme` and `@utility` directives. `@theme` is for tokens where all color utilities should work (bg/text/border share same value). `@utility` is for semantic tokens where bg ≠ text color.
+### Step 2: DB Schema (commit: 3b20421, branch: feature/step-2-schema)
+- Schema split into src/lib/db/schema/ (one file per table)
+- `src/lib/db/vector.ts`: custom `vector(n)` type via drizzle `customType` for pgvector
+- `src/lib/db/setup.ts`: `setupExtensions()` — runs `CREATE EXTENSION IF NOT EXISTS vector`
+- `drizzle/setup.sql`: documents vector ext + HNSW index upgrade SQL (must run before migrations)
+- `drizzle.config.ts`: updated to point at schema/index.ts
+- `src/lib/db/index.ts`: passes schema to drizzle() for relations support
+- Migration generated: `drizzle/0000_clean_typhoid_mary.sql`
+
+**HNSW index note:** The generated migration creates a btree index on `classifications.embedding`. Before production use, replace it with:
+```sql
+DROP INDEX IF EXISTS classifications_embedding_idx;
+CREATE INDEX classifications_embedding_hnsw_idx
+  ON classifications USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
+```
+See `drizzle/setup.sql` for the full SQL.
 
 ## Current File Tree
 ```
@@ -44,7 +55,17 @@ src/
   lib/
     db/
       index.ts
-      schema.ts
+      setup.ts
+      vector.ts
+      schema/
+        index.ts
+        users.ts
+        buckets.ts
+        category-exemplars.ts
+        classifications.ts
+        reclassification-log.ts
+        ai-usage.ts
+        relations.ts
 ```
 
 ## Known Issues
