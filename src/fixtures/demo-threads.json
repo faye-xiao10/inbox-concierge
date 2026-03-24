@@ -1,6 +1,6 @@
 [
   {
-    "bucketName": "Important",
+    "bucketName": "Direct",
     "threadId": "demo_thread_001",
     "subject": "Need Q3 deck before EOD — can you send?",
     "senderName": "Sarah Chen",
@@ -21,7 +21,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Important",
+    "bucketName": "Direct",
     "threadId": "demo_thread_002",
     "subject": "Re: Contract renewal — deadline is Friday",
     "senderName": "Marcus Webb",
@@ -42,7 +42,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Important",
+    "bucketName": "Direct",
     "threadId": "demo_thread_003",
     "subject": "Interview scheduling — Thursday or Friday?",
     "senderName": "Priya Nair",
@@ -63,7 +63,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Important",
+    "bucketName": "Direct",
     "threadId": "demo_thread_004",
     "subject": "PR review needed — blocking deploy",
     "senderName": "Tom Okafor",
@@ -84,7 +84,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Can Wait",
+    "bucketName": "Updates",
     "threadId": "demo_thread_005",
     "subject": "Standup summary — March 19",
     "senderName": "Ops Bot",
@@ -105,7 +105,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Can Wait",
+    "bucketName": "Updates",
     "threadId": "demo_thread_006",
     "subject": "All-hands this Thursday — save the date",
     "senderName": "People Ops",
@@ -126,7 +126,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Can Wait",
+    "bucketName": "Updates",
     "threadId": "demo_thread_007",
     "subject": "FYI — prod deploy went out at 3pm",
     "senderName": "Mei Zhang",
@@ -147,7 +147,7 @@
     "llmReasoning": null
   },
   {
-    "bucketName": "Can Wait",
+    "bucketName": "Updates",
     "threadId": "demo_thread_008",
     "subject": "We published a new engineering blog post",
     "senderName": "Dev Rel",

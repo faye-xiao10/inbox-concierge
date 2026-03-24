@@ -3,8 +3,8 @@ import { db } from '@/lib/db';
 import { classifications, buckets } from '@/lib/db/schema';
 
 const BUCKET_BASE: Record<string, number> = {
-  Important: 0.7,
-  'Can Wait': 0.3,
+  Direct: 0.7,
+  Updates: 0.3,
   Newsletters: 0.1,
   Promotions: 0.1,
   'Auto-Archive': 0.0,

@@ -33,7 +33,7 @@ const DOMAIN_MAP: Record<string, string> = {
     'slack.com','zoom.us','anthropic.com','openai.com','docusign.com',
     'dropbox.com','greenhouse.io','lever.co','workday.com'], 'Auto-Archive'),
   ...dm(['linkedin.com','twitter.com','x.com','facebook.com','instagram.com',
-    'meetup.com','eventbrite.com','lu.ma','calendly.com','doodle.com'], 'Can Wait'),
+    'meetup.com','eventbrite.com','lu.ma','calendly.com','doodle.com'], 'Updates'),
   ...dm(['glassdoor.com','builtin.com','indeed.com','venmo.com',
     'pixabay.com','unsplash.com'], 'Promotions'),
 };
@@ -94,14 +94,14 @@ const SENDER_PATTERNS: { pattern: RegExp; bucketName: string }[] = [
   { pattern: /sparkpostmail\.com$/i, bucketName: 'Promotions' },
   { pattern: /mandrillapp\.com$/i, bucketName: 'Promotions' },
   // Can Wait
-  { pattern: /^support@/i, bucketName: 'Can Wait' },
-  { pattern: /^help@/i, bucketName: 'Can Wait' },
+  { pattern: /^support@/i, bucketName: 'Updates' },
+  { pattern: /^help@/i, bucketName: 'Updates' },
 ];
 
 // ─── Pure classifiers ────────────────────────────────────────────────────────
 
 export function classifyTier0(gmailCategory: string | null, bucketMap: BucketMap): TierResult | null {
-  const map: Record<string, string> = { Promotions: 'Promotions', Social: 'Can Wait' };
+  const map: Record<string, string> = { Promotions: 'Promotions', Social: 'Updates' };
   if (!gmailCategory || !(gmailCategory in map)) return null;
   const bucketId = bucketMap[map[gmailCategory]];
   return bucketId !== undefined ? { bucketId, tier: 0, confidence: 1.0 } : null;
