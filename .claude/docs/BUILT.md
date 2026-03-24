@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–9 + style system complete. Ready to build Step 10.
+Steps 1–10 + style system complete. Ready to build Step 11.
 
 ## Completed Steps
 
@@ -89,6 +89,7 @@ src/
       sync/route.ts
       tier0-tier1/route.ts
       tier2/route.ts
+      tier3/route.ts
     globals.css
     inbox/
       loading.tsx
@@ -135,8 +136,10 @@ src/
     pipeline/
       bootstrap-exemplars.ts
       embed-threads.ts
+      llm-classify.ts
       tier0-tier1.ts
       tier2.ts
+      tier3.ts
     session.ts
     utils/
       retry.ts
@@ -163,6 +166,11 @@ src/
 - src/app/api/tier2/route.ts — POST dev endpoint: bootstraps exemplars then runs Tier 2, returns `{ exemplarsCreated, exemplarsSkipped, classified, flaggedForTier3 }`
 
 **Patch:** Below-threshold emails now persist their computed confidence score (bucketId/tier left null) so Tier 3 has it as context.
+
+### Step 10: Tier 3 Batch LLM Classification (branch: feature/step-10-tier3)
+- src/lib/pipeline/llm-classify.ts — `classifyBatchWithFallback`: Claude (`claude-sonnet-4-5`, tool use) → Gemini (`gemini-2.0-flash`, FunctionCallingMode.ANY) → empty array; validates threadIds/bucketIds, clamps confidence; logs aiUsage with cost estimates ($3/$15 Claude, $0.10/$0.40 Gemini)
+- src/lib/pipeline/tier3.ts — `runTier3`: demo guard, batches of 12, LLM classify → heuristic fallback (best exemplar without threshold) for missed items, exemplar promotion (confidence > 0.7 → categoryExemplars source='confirmed' weight=0.8); returns `{ classified, heuristicFallback, skipped }`
+- src/app/api/tier3/route.ts — POST dev endpoint, session-gated
 
 ## Known Issues
 (none)
