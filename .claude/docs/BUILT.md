@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–4 + style system complete. Ready to build Step 5 (Gmail sync / pipeline tier 1).
+Steps 1–5 + style system complete. Ready to build Step 6.
 
 ## Completed Steps
 
@@ -48,6 +48,13 @@ Steps 1–4 + style system complete. Ready to build Step 5 (Gmail sync / pipelin
 
 **Vercel env vars needed:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (in addition to prior vars)
 
+### Step 5: Gmail Sync (branch: feature/step-5-gmail-sync)
+- src/lib/gmail/client.ts — raw Gmail API wrappers: `getThreadList`, `getThread`; types `GmailMessage`, `GmailPart`, `GmailThread`
+- src/lib/gmail/sync.ts — `syncGmailThreads(userId, userEmail, onProgress?)`: fetches 200 threads (2 paginated pages), extracts fields per spec, upserts into classifications via `onConflictDoNothing`; pure helpers `extractThreadData`, `extractAttachments`, `parseFrom`
+- src/app/api/sync/route.ts — POST: session-gated dev endpoint calling syncGmailThreads, returns `{ synced, skipped }`
+
+**Extraction notes:** subject from first message, senderName/senderEmail from last message From header (handles "Name <email>" and bare email), gmailCategory from first message labelIds, isParticipant checks all messages, attachmentFilenames recursively collected from all message parts.
+
 ## Current File Tree
 ```
 src/
@@ -58,6 +65,7 @@ src/
         demo/route.ts
         google/route.ts
         signout/route.ts
+      sync/route.ts
     globals.css
     layout.tsx
     page.tsx
@@ -82,6 +90,9 @@ src/
         reclassification-log.ts
         ai-usage.ts
         relations.ts
+    gmail/
+      client.ts
+      sync.ts
     google/
       auth.ts
     session.ts
