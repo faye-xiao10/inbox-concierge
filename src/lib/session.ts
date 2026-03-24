@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
+import { cookies } from 'next/headers';
 
 export interface SessionPayload {
   userId: number;
@@ -47,6 +48,14 @@ export async function verifySession(
   } catch {
     return null;
   }
+}
+
+// For use in server components — reads from next/headers cookies()
+export async function getSessionFromCookies(): Promise<SessionPayload | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) return null;
+  return verifySession(token);
 }
 
 export async function getSession(
