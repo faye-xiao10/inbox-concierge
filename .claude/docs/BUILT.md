@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–6 + style system complete. Ready to build Step 7.
+Steps 1–7 + style system complete. Ready to build Step 8.
 
 ## Completed Steps
 
@@ -66,7 +66,14 @@ Steps 1–6 + style system complete. Ready to build Step 7.
 - src/components/inbox/email-row.tsx — 3-line layout: sender+timestamp / subject+badges / snippet; isUnread → font-semibold + gold left border accent; security/confidence/tier badges
 - src/components/inbox/empty-state.tsx — centered inbox SVG icon + "No emails in {bucketName}"
 
+
 **Notes:** `getSessionFromCookies` added to session.ts (server-component-safe); no schema changes.
+
+### Step 6 Patch: Conditional Gmail Link (commit: 8097e2c)
+- src/app/inbox/page.tsx — passes `isDemo` from session to BucketTabs
+- src/components/inbox/bucket-tabs.tsx — accepts + forwards `isDemo` to EmailList
+- src/components/inbox/email-list.tsx — accepts + forwards `isDemo` to EmailRow
+- src/components/inbox/email-row.tsx — `isDemo=true` → plain div (no link); `isDemo=false` → `<a>` linking to Gmail thread (`https://mail.google.com/mail/u/0/#inbox/{threadId}`) with hover styles
 
 ## Current File Tree
 ```
@@ -78,6 +85,7 @@ src/
         demo/route.ts
         google/route.ts
         signout/route.ts
+      embed/route.ts
       sync/route.ts
     globals.css
     inbox/
@@ -111,6 +119,9 @@ src/
         reclassification-log.ts
         ai-usage.ts
         relations.ts
+    embed/
+      gemini-embed.ts
+      umap-runner.ts
     gmail/
       client.ts
       sync.ts
@@ -119,8 +130,21 @@ src/
     inbox/
       format-timestamp.ts
       get-inbox-threads.ts
+    pipeline/
+      embed-threads.ts
     session.ts
+    utils/
+      retry.ts
 ```
+
+### Step 7: Embedding Pipeline (branch: feature/step-7-embedding)
+- src/lib/utils/retry.ts — `withRetry<T>`: exponential backoff + jitter, retries on 429/5xx, max 3 attempts
+- src/lib/embed/gemini-embed.ts — `buildEmbeddingInput`: formats thread as structured string; `batchEmbed(texts, userId)`: calls `gemini-embedding-001` batchEmbedContents (up to 100 texts), validates 384 dims + no NaN, logs to aiUsage
+- src/lib/embed/umap-runner.ts — `runUmap`: umap-js wrapper, nComponents=2, nNeighbors=min(15,n-1), validates embeddings for NaN/non-finite, returns zeros on failure or <4 inputs
+- src/lib/pipeline/embed-threads.ts — `embedThreads(userId, onProgress?)`: demo no-op guard, fetches unembedded threads, chunks to 100, embeds + writes via Promise.allSettled, runs UMAP on all user embeddings if any missing coords, returns `{ embedded, skipped, umapComplete }`
+- src/app/api/embed/route.ts — POST `/api/embed`: dev endpoint, session-gated, calls embedThreads
+
+**Notes:** `text-embedding-004` is not accessible with this API key; switched to `gemini-embedding-001` which supports batchEmbedContents and returns 384 dims. neon-http driver does not support transactions; embedding and UMAP writes use `Promise.allSettled` with per-failure logging instead.
 
 ## Known Issues
 (none)
