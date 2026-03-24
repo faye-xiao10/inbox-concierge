@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–5 + style system complete. Ready to build Step 6.
+Steps 1–6 + style system complete. Ready to build Step 7.
 
 ## Completed Steps
 
@@ -55,6 +55,19 @@ Steps 1–5 + style system complete. Ready to build Step 6.
 
 **Extraction notes:** subject from first message, senderName/senderEmail from last message From header (handles "Name <email>" and bare email), gmailCategory from first message labelIds, isParticipant checks all messages, attachmentFilenames recursively collected from all message parts.
 
+### Step 6: Basic Inbox UI (branch: feature/step-6-inbox-ui)
+- src/lib/inbox/get-inbox-threads.ts — `getInboxThreads(userId)`: Drizzle leftJoin classifications+buckets, DESC timestamp, full null-fallback mapping; exports `InboxThread` interface
+- src/lib/inbox/format-timestamp.ts — `formatTimestamp(date)`: today→"2:34 PM", this week→"Mon", older→"Jan 12"
+- src/lib/session.ts — added `getSessionFromCookies()` using `next/headers` cookies() for server component auth
+- src/app/inbox/page.tsx — server component: session guard via getSessionFromCookies, parallel fetch threads+buckets, renders BucketTabs
+- src/app/inbox/loading.tsx — Tailwind animate-pulse skeleton: 5 tab pills + 8 email row placeholders
+- src/components/inbox/bucket-tabs.tsx — 'use client'; useState tab selection defaulting to first bucket with emails; tab count badges with bucket color; Uncategorized tab shown only when count > 0; renders EmailList
+- src/components/inbox/email-list.tsx — maps threads to EmailRow in a \<ul\> with divide-y; renders EmptyState when empty
+- src/components/inbox/email-row.tsx — 3-line layout: sender+timestamp / subject+badges / snippet; isUnread → font-semibold + gold left border accent; security/confidence/tier badges
+- src/components/inbox/empty-state.tsx — centered inbox SVG icon + "No emails in {bucketName}"
+
+**Notes:** `getSessionFromCookies` added to session.ts (server-component-safe); no schema changes.
+
 ## Current File Tree
 ```
 src/
@@ -67,9 +80,17 @@ src/
         signout/route.ts
       sync/route.ts
     globals.css
+    inbox/
+      loading.tsx
+      page.tsx
     layout.tsx
     page.tsx
   components/
+    inbox/
+      bucket-tabs.tsx
+      email-list.tsx
+      email-row.tsx
+      empty-state.tsx
     ui/
       button.tsx
   fixtures/
@@ -95,6 +116,9 @@ src/
       sync.ts
     google/
       auth.ts
+    inbox/
+      format-timestamp.ts
+      get-inbox-threads.ts
     session.ts
 ```
 
