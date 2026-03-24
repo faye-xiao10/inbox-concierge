@@ -12,6 +12,7 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   googleAccessToken: text('google_access_token').notNull(),
   googleRefreshToken: text('google_refresh_token').notNull(),
+  tokenExpiresAt: timestamp('token_expires_at'),
   isDemo: boolean('is_demo').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });

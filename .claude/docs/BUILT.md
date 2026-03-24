@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–3 + style system complete. Ready to build Step 4 (Google OAuth).
+Steps 1–4 + style system complete. Ready to build Step 5 (Gmail sync / pipeline tier 1).
 
 ## Completed Steps
 
@@ -37,13 +37,26 @@ Steps 1–3 + style system complete. Ready to build Step 4 (Google OAuth).
 
 **Vercel env vars needed:** `SESSION_SECRET` (≥32 chars), `NEXT_PUBLIC_URL`
 
+### Step 4: Google OAuth (branch: feature/step-4-google-oauth)
+- src/lib/db/schema/users.ts — added `tokenExpiresAt timestamp` column
+- drizzle/0001_unique_felicia_hardy.sql — migration adding token_expires_at
+- src/lib/google/auth.ts — AES-GCM encrypt/decrypt (PBKDF2 key from SESSION_SECRET), buildAuthUrl, exchangeCode, refreshAccessToken, getValidAccessToken; exported encrypt for callback route
+- src/app/api/auth/google/route.ts — GET: generate HMAC-signed nonce state, store in oauth_state cookie, redirect to Google
+- src/app/api/auth/callback/route.ts — GET: validate state HMAC + cookie, exchangeCode, encrypt tokens, upsert user, seedDefaultBuckets for new users, set session cookie, redirect /inbox
+
+**Crypto notes:** AES-GCM IV prepended as `{iv}.{ciphertext}` (base64url). PBKDF2 salt is fixed string `inbox-concierge-oauth`. `getValidAccessToken` is the only function returning plaintext — all other code stores/passes encrypted values.
+
+**Vercel env vars needed:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (in addition to prior vars)
+
 ## Current File Tree
 ```
 src/
   app/
     api/
       auth/
+        callback/route.ts
         demo/route.ts
+        google/route.ts
         signout/route.ts
     globals.css
     layout.tsx
@@ -69,6 +82,8 @@ src/
         reclassification-log.ts
         ai-usage.ts
         relations.ts
+    google/
+      auth.ts
     session.ts
 ```
 
