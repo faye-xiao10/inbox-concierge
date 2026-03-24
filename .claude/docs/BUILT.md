@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–7 + style system complete. Ready to build Step 8.
+Steps 1–8 + style system complete. Ready to build Step 9.
 
 ## Completed Steps
 
@@ -87,6 +87,7 @@ src/
         signout/route.ts
       embed/route.ts
       sync/route.ts
+      tier0-tier1/route.ts
     globals.css
     inbox/
       loading.tsx
@@ -132,6 +133,7 @@ src/
       get-inbox-threads.ts
     pipeline/
       embed-threads.ts
+      tier0-tier1.ts
     session.ts
     utils/
       retry.ts
@@ -145,6 +147,12 @@ src/
 - src/app/api/embed/route.ts — POST `/api/embed`: dev endpoint, session-gated, calls embedThreads
 
 **Notes:** `text-embedding-004` is not accessible with this API key; switched to `gemini-embedding-001` which supports batchEmbedContents and returns 384 dims. neon-http driver does not support transactions; embedding and UMAP writes use `Promise.allSettled` with per-failure logging instead.
+
+### Step 8: Tier 0 + Tier 1 Classification (branch: feature/step-8-tier0-tier1)
+- src/lib/pipeline/tier0-tier1.ts — `classifyTier0`: maps Gmail categories (Promotions/Social/Updates/Forums) to buckets, null for Primary; `classifyTier1`: 18 sender-pattern regexes (checked first) + 65-entry domain map; `runTier0AndTier1`: fetches bucketId IS NULL threads, runs both classifiers, batch-writes in chunks of 50 via Promise.allSettled
+- src/app/api/tier0-tier1/route.ts — POST dev endpoint, session-gated, returns `{ tier0Count, tier1Count, totalClassified }`
+
+**Hotfix:** Gmail sync stores categories without `CATEGORY_` prefix (e.g. `"Promotions"` not `"CATEGORY_PROMOTIONS"`); classifyTier0 updated to match actual stored values.
 
 ## Known Issues
 (none)
