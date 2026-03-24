@@ -3,28 +3,26 @@ import { formatTimestamp } from '@/lib/inbox/format-timestamp';
 
 interface EmailRowProps {
   thread: InboxThread;
+  isDemo: boolean;
 }
 
-export default function EmailRow({ thread }: EmailRowProps) {
+export default function EmailRow({ thread, isDemo }: EmailRowProps) {
   const { isUnread, senderName, subject, snippet, timestamp, securityFlags, confidence, classificationTier } = thread;
 
   const hasSecurityFlag = (securityFlags ?? []).length > 0;
   const showConfidence = confidence !== null && confidence < 0.8;
   const showTier = classificationTier !== null && classificationTier >= 2;
 
-  return (
-    <div
-      className="px-4 py-3 flex flex-col gap-0.5 hover:bg-secondary transition-colors duration-150"
-      style={{ borderLeft: isUnread ? '2px solid var(--accent-primary)' : '2px solid transparent' }}
-    >
+  const rowClass = `px-4 py-3 flex flex-col gap-0.5 transition-colors duration-150${isDemo ? '' : ' hover:bg-secondary cursor-pointer'}`;
+  const rowStyle = { borderLeft: isUnread ? '2px solid var(--accent-primary)' : '2px solid transparent' };
+
+  const inner = (
+    <>
       {/* Line 1: sender + timestamp */}
       <div className="flex justify-between items-baseline gap-2">
         <span
           className="text-sm truncate"
-          style={{
-            color: 'var(--text-primary)',
-            fontWeight: isUnread ? 600 : 400,
-          }}
+          style={{ color: 'var(--text-primary)', fontWeight: isUnread ? 600 : 400 }}
           title={senderName}
         >
           {senderName || thread.senderEmail}
@@ -38,10 +36,7 @@ export default function EmailRow({ thread }: EmailRowProps) {
       <div className="flex justify-between items-center gap-2">
         <span
           className="text-sm truncate"
-          style={{
-            color: 'var(--text-primary)',
-            fontWeight: isUnread ? 600 : 400,
-          }}
+          style={{ color: 'var(--text-primary)', fontWeight: isUnread ? 600 : 400 }}
           title={subject}
         >
           {subject || '(no subject)'}
@@ -75,13 +70,25 @@ export default function EmailRow({ thread }: EmailRowProps) {
       </div>
 
       {/* Line 3: snippet */}
-      <p
-        className="text-sm truncate"
-        style={{ color: 'var(--text-tertiary)' }}
-        title={snippet}
-      >
+      <p className="text-sm truncate" style={{ color: 'var(--text-tertiary)' }} title={snippet}>
         {snippet}
       </p>
-    </div>
+    </>
+  );
+
+  if (isDemo) {
+    return <div className={rowClass} style={rowStyle}>{inner}</div>;
+  }
+
+  return (
+    <a
+      href={`https://mail.google.com/mail/u/0/#inbox/${thread.threadId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={rowClass}
+      style={rowStyle}
+    >
+      {inner}
+    </a>
   );
 }

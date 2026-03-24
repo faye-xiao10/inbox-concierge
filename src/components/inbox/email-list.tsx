@@ -5,9 +5,10 @@ import EmptyState from './empty-state';
 interface EmailListProps {
   threads: InboxThread[];
   bucketName: string;
+  isDemo: boolean;
 }
 
-export default function EmailList({ threads, bucketName }: EmailListProps) {
+export default function EmailList({ threads, bucketName, isDemo }: EmailListProps) {
   if (threads.length === 0) {
     return <EmptyState bucketName={bucketName} />;
   }
@@ -19,7 +20,7 @@ export default function EmailList({ threads, bucketName }: EmailListProps) {
     >
       {threads.map((thread) => (
         <li key={thread.threadId} style={{ borderBottom: '1px solid var(--border-subtle)' }} className="last:border-0">
-          <EmailRow thread={thread} />
+          <EmailRow thread={thread} isDemo={isDemo} />
         </li>
       ))}
     </ul>

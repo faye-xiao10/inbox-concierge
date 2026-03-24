@@ -7,11 +7,12 @@ import EmailList from './email-list';
 interface BucketTabsProps {
   threads: InboxThread[];
   buckets: { id: number; name: string; color: string; sortOrder: number }[];
+  isDemo: boolean;
 }
 
 const UNCATEGORIZED_ID = -1;
 
-export default function BucketTabs({ threads, buckets }: BucketTabsProps) {
+export default function BucketTabs({ threads, buckets, isDemo }: BucketTabsProps) {
   const countFor = (bucketId: number | null) =>
     threads.filter((t) => (bucketId === UNCATEGORIZED_ID ? t.bucketId === null : t.bucketId === bucketId)).length;
 
@@ -90,6 +91,7 @@ export default function BucketTabs({ threads, buckets }: BucketTabsProps) {
       <EmailList
         threads={filteredThreads}
         bucketName={activeId === UNCATEGORIZED_ID ? 'Uncategorized' : (activeBucket?.name ?? 'this bucket')}
+        isDemo={isDemo}
       />
     </div>
   );

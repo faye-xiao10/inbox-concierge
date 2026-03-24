@@ -34,7 +34,7 @@ export default async function InboxPage() {
         <h1 className="heading-xl mb-6" style={{ color: 'var(--text-primary)' }}>
           Inbox
         </h1>
-        <BucketTabs threads={threads} buckets={userBuckets} />
+        <BucketTabs threads={threads} buckets={userBuckets} isDemo={session.isDemo} />
       </div>
     </main>
   );
