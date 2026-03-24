@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–8 + style system complete. Ready to build Step 9.
+Steps 1–9 + style system complete. Ready to build Step 10.
 
 ## Completed Steps
 
@@ -88,6 +88,7 @@ src/
       embed/route.ts
       sync/route.ts
       tier0-tier1/route.ts
+      tier2/route.ts
     globals.css
     inbox/
       loading.tsx
@@ -132,8 +133,10 @@ src/
       format-timestamp.ts
       get-inbox-threads.ts
     pipeline/
+      bootstrap-exemplars.ts
       embed-threads.ts
       tier0-tier1.ts
+      tier2.ts
     session.ts
     utils/
       retry.ts
@@ -153,6 +156,13 @@ src/
 - src/app/api/tier0-tier1/route.ts — POST dev endpoint, session-gated, returns `{ tier0Count, tier1Count, totalClassified }`
 
 **Hotfix:** Gmail sync stores categories without `CATEGORY_` prefix (e.g. `"Promotions"` not `"CATEGORY_PROMOTIONS"`); classifyTier0 updated to match actual stored values.
+
+### Step 9: Tier 2 Semantic Classification (branch: feature/step-9-tier2)
+- src/lib/pipeline/bootstrap-exemplars.ts — `bootstrapExemplars(userId)`: seeds 25 synthetic exemplars (5 per default bucket), idempotent via per-bucket count check, single batchEmbed call wrapped in withRetry, inserts via Promise.allSettled
+- src/lib/pipeline/tier2.ts — `runTier2(userId, onProgress?)`: fetches bucketId IS NULL + embedded threads, chunks of 20, cosine distance query via Drizzle sql tag (`<=>`), classifies at confidence > 0.70 AND margin > 0.15, writes bucketId+tier+confidence for classified; writes confidence-only for below-threshold (Tier 3 context); returns `{ classified, flaggedForTier3 }`
+- src/app/api/tier2/route.ts — POST dev endpoint: bootstraps exemplars then runs Tier 2, returns `{ exemplarsCreated, exemplarsSkipped, classified, flaggedForTier3 }`
+
+**Patch:** Below-threshold emails now persist their computed confidence score (bucketId/tier left null) so Tier 3 has it as context.
 
 ## Known Issues
 (none)
