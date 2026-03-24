@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–10 + style system complete. Ready to build Step 11.
+Steps 1–11 + style system complete. Ready to build Step 12.
 
 ## Completed Steps
 
@@ -171,6 +171,88 @@ src/
 - src/lib/pipeline/llm-classify.ts — `classifyBatchWithFallback`: Claude (`claude-sonnet-4-5`, tool use) → Gemini (`gemini-2.0-flash`, FunctionCallingMode.ANY) → empty array; validates threadIds/bucketIds, clamps confidence; logs aiUsage with cost estimates ($3/$15 Claude, $0.10/$0.40 Gemini)
 - src/lib/pipeline/tier3.ts — `runTier3`: demo guard, batches of 12, LLM classify → heuristic fallback (best exemplar without threshold) for missed items, exemplar promotion (confidence > 0.7 → categoryExemplars source='confirmed' weight=0.8); returns `{ classified, heuristicFallback, skipped }`
 - src/app/api/tier3/route.ts — POST dev endpoint, session-gated
+
+### Step 11: SSE Streaming + Classify Orchestrator (branch: feature/step-11-sse-streaming)
+- src/app/api/classify/route.ts — SSE endpoint: session-gated, sync-only rate limit (60s cooldown via module-level Map), hardcoded full mode, streams PipelineEvent via ReadableStream with `data: ` prefix; passes request.signal as AbortSignal
+- src/lib/pipeline/orchestrator.ts — `runPipeline`: 8-stage pipeline (sync→embed→security→tier0/1→tier2→tier3→triage→metrics); `resetForFullMode` clears classification fields + `securityFlags: []` + deletes exemplars, does NOT clear embedding/umapX/umapY; exports PipelineEvent (16-type union), PipelineMetrics, PipelineMode
+- src/lib/pipeline/security-scan.ts — `runSecurityScan`: 15 regex patterns across 5 flag types (phishing, financial_fraud, suspicious_url, pii, dangerous_attachment); always writes `string[]` to securityFlags
+- src/lib/pipeline/triage.ts — `runTriage`: urgency scoring with bucket base scores + additive modifiers (deadline language, isUnread, isToday, messageCount, isParticipant); only processes urgencyScore IS NULL rows
+- src/lib/pipeline/tier0-tier1.ts — userId filter added to unclassified query; Tier 0 reduced to Promotions+Social only (Updates/Forums pass through to Tier 1 for better newsletter detection)
+- src/lib/utils/retry.ts — `isRetryable` hardened: catches quota/overloaded/message-string errors
+- src/lib/embed/gemini-embed.ts — retry base delay raised to 5000ms
+- src/lib/pipeline/embed-threads.ts — inter-batch delay raised to 5000ms
+- src/components/inbox/classify-button.tsx — single "Classify Inbox" button, always full mode; SSE state machine (idle→running→complete/error); complete state shows "✓ N emails classified"; only prop is `isDemo: boolean`
+- src/app/inbox/page.tsx — ClassifyButton receives only `isDemo`; no hasClassifiedEmails logic
+- src/app/api/sync/route.ts — updated to call `getValidAccessToken` before passing to syncGmailThreads
+
+**Key fixes during Step 11:**
+- Tier 0/1 unclassified query was missing `userId` filter — returned all users' emails
+- Gemini 429 hardening: `isRetryable` catches message-string errors; 5s delays throughout
+- Full mode no longer clears embeddings — re-classify reuses vectors, only re-runs classification tiers
+- `securityFlags NOT NULL`: `resetForFullMode` sets `[]`, `sync.ts` always inserts `[]`
+- Tier 0 Updates/Forums passthrough: newsletter senders in Updates now hit Tier 1 domain matching correctly
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      classify/route.ts
+      embed/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    page.tsx
+  components/
+    inbox/bucket-tabs.tsx
+    inbox/classify-button.tsx
+    inbox/email-list.tsx
+    inbox/email-row.tsx
+    inbox/empty-state.tsx
+    ui/button.tsx
+  fixtures/demo-threads.json
+  lib/
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+```
 
 ## Known Issues
 (none)

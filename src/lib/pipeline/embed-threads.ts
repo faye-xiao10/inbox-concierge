@@ -59,7 +59,9 @@ export async function embedThreads(
   if (totalToEmbed > 0) {
     const batches = chunk(unembedded, 100);
 
-    for (const batch of batches) {
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      const batch = batches[batchIdx];
+      if (batchIdx > 0) await new Promise((resolve) => setTimeout(resolve, 5000));
       const inputs = batch.map((t) => buildEmbeddingInput(t));
       let vectors: number[][];
 

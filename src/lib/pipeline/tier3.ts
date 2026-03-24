@@ -29,9 +29,12 @@ async function bestExemplarBucket(embedding: number[], userId: number): Promise<
   return rows[0] ? Number(rows[0].bucketId) : null;
 }
 
+type EmailClassifiedEvent = { threadId: string; bucketId: number; tier: number; confidence: number };
+
 export async function runTier3(
   userId: number,
   onProgress?: (current: number, total: number, batchNumber: number) => void,
+  onEmailClassified?: (result: EmailClassifiedEvent) => void,
 ): Promise<Tier3Result> {
   const userRows = await db.select({ isDemo: users.isDemo }).from(users).where(eq(users.id, userId));
   if (!userRows[0]) throw new Error(`User ${userId} not found`);
@@ -92,6 +95,7 @@ export async function runTier3(
         const candidate = batch.find((c) => c.threadId === r.threadId);
         if (!candidate) return Promise.resolve();
         classified++;
+        onEmailClassified?.({ threadId: r.threadId, bucketId: r.bucketId, tier: 3, confidence: r.confidence });
         return db
           .update(classifications)
           .set({ bucketId: r.bucketId, classificationTier: 3, confidence: r.confidence, llmReasoning: r.reasoning })
@@ -107,6 +111,7 @@ export async function runTier3(
         const bucketId = await bestExemplarBucket(c.embedding, userId).catch(() => null);
         if (!bucketId) return;
         heuristicFallback++;
+        onEmailClassified?.({ threadId: c.threadId, bucketId, tier: 3, confidence: c.confidence ?? 0.3 });
         return db
           .update(classifications)
           .set({ bucketId, classificationTier: 3, confidence: c.confidence ?? 0.3, llmReasoning: 'heuristic fallback' })

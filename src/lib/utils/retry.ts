@@ -1,9 +1,16 @@
 function isRetryable(error: unknown): boolean {
-  if (error && typeof error === 'object' && 'status' in error) {
-    const status = (error as { status: number }).status;
-    return status === 429 || status >= 500;
-  }
-  return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('429') ||
+    lower.includes('too many requests') ||
+    lower.includes('rate limit') ||
+    lower.includes('quota') ||
+    lower.includes('503') ||
+    lower.includes('500') ||
+    lower.includes('server error') ||
+    lower.includes('overloaded')
+  );
 }
 
 export async function withRetry<T>(

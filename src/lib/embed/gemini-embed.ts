@@ -80,6 +80,10 @@ async function fetchEmbeddings(texts: string[]): Promise<number[][]> {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function batchEmbed(
   texts: string[],
   userId: number,
@@ -89,7 +93,7 @@ export async function batchEmbed(
     throw new Error(`batchEmbed accepts up to 100 texts, got ${texts.length}`);
   }
 
-  const vectors = await withRetry(() => fetchEmbeddings(texts));
+  const vectors = await withRetry(() => fetchEmbeddings(texts), 4, 5000);
 
   const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
   try {

@@ -1,6 +1,5 @@
 import { db } from '@/lib/db';
 import { classifications } from '@/lib/db/schema';
-import { getValidAccessToken } from '@/lib/google/auth';
 import { getThreadList, getThread } from '@/lib/gmail/client';
 import type { GmailThread, GmailPart } from '@/lib/gmail/client';
 
@@ -104,10 +103,9 @@ function extractThreadData(thread: GmailThread, userEmail: string): ExtractedThr
 export async function syncGmailThreads(
   userId: number,
   userEmail: string,
+  accessToken: string,
   onProgress?: (current: number, total: number) => void,
 ): Promise<{ synced: number; skipped: number }> {
-  const accessToken = await getValidAccessToken(userId);
-
   const page1 = await getThreadList(accessToken, { maxResults: 100 });
   const allThreadStubs = [...page1.threads];
 

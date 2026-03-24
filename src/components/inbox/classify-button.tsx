@@ -1,0 +1,151 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { PipelineEvent, PipelineMetrics } from '@/lib/pipeline/orchestrator';
+
+interface ClassifyButtonProps {
+  isDemo: boolean;
+}
+
+type ClassifyStatus = 'idle' | 'running' | 'complete' | 'error';
+
+export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
+  const router = useRouter();
+  const [status, setStatus] = useState<ClassifyStatus>('idle');
+  const [stage, setStage] = useState('');
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  function handleEvent(event: PipelineEvent) {
+    switch (event.type) {
+      case 'sync_progress':
+        setProgress({ current: event.current, total: event.total });
+        setStage(`Syncing emails ${event.current}/${event.total}...`);
+        break;
+      case 'embed_progress':
+        setProgress({ current: event.current, total: event.total });
+        setStage(`Embedding ${event.current}/${event.total}...`);
+        break;
+      case 'tier2_progress':
+        setProgress({ current: event.current, total: event.total });
+        setStage(`Semantic matching ${event.current}/${event.total}...`);
+        break;
+      case 'tier3_progress':
+        setProgress({ current: event.current, total: event.total });
+        setStage(`AI classifying batch ${event.batchNumber}...`);
+        break;
+      case 'sync_complete': setProgress(null); setStage('Analyzing emails...'); break;
+      case 'embed_complete': setStage('Running security scan...'); break;
+      case 'security_complete': setStage('Applying rules...'); break;
+      case 'tier0_complete':
+      case 'tier1_complete': setStage('Semantic matching...'); break;
+      case 'tier2_complete': setStage('AI classification...'); break;
+      case 'tier3_complete': setStage('Scoring urgency...'); break;
+      case 'triage_complete': setStage('Finishing up...'); break;
+      case 'pipeline_complete':
+        setMetrics(event.metrics);
+        setStatus('complete');
+        router.refresh();
+        break;
+      case 'error':
+        setStatus('error');
+        setErrorMessage(event.message);
+        break;
+    }
+  }
+
+  async function startClassify() {
+    setStatus('running');
+    setProgress(null);
+    setStage(isDemo ? 'Classifying demo data...' : 'Starting pipeline...');
+
+    const response = await fetch('/api/classify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+      setStatus('error');
+      setErrorMessage(err.error ?? 'Classification failed');
+      return;
+    }
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const event = JSON.parse(line.slice(6)) as PipelineEvent;
+          handleEvent(event);
+        } catch { /* malformed event, skip */ }
+      }
+    }
+
+    setStatus((s) => (s === 'running' ? 'complete' : s));
+  }
+
+  if (status === 'idle') {
+    return (
+      <button className="btn-primary btn-md" onClick={startClassify}>
+        Classify Inbox
+      </button>
+    );
+  }
+
+  if (status === 'running') {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-2 body-sm" style={{ color: 'var(--text-secondary)' }}>
+          <span className="inline-block w-3 h-3 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }} />
+          {stage}
+        </div>
+        {progress && (
+          <div className="flex items-center gap-2 body-sm" style={{ color: 'var(--text-tertiary)' }}>
+            <div className="w-32 h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+              <div className="h-full rounded-full transition-all duration-300" style={{ backgroundColor: 'var(--accent-primary)', width: `${Math.round((progress.current / progress.total) * 100)}%` }} />
+            </div>
+            {progress.current}/{progress.total}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (status === 'complete' && metrics) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="body-sm" style={{ color: 'var(--color-success)' }}>
+          ✓ {metrics.totalThreads} emails classified
+        </span>
+        <button className="btn-ghost btn-sm" onClick={() => setStatus('idle')}>
+          Classify Again
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="body-sm" style={{ color: 'var(--color-error)' }}>⚠ {errorMessage}</span>
+        <button className="btn-ghost btn-sm" onClick={() => { setStatus('idle'); setErrorMessage(''); }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}

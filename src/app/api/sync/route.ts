@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { syncGmailThreads } from '@/lib/gmail/sync';
+import { getValidAccessToken } from '@/lib/google/auth';
 
 export async function POST(req: Request): Promise<Response> {
   try {
@@ -10,7 +11,8 @@ export async function POST(req: Request): Promise<Response> {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { synced, skipped } = await syncGmailThreads(session.userId, session.email);
+    const accessToken = await getValidAccessToken(session.userId);
+    const { synced, skipped } = await syncGmailThreads(session.userId, session.email, accessToken);
     return NextResponse.json({ synced, skipped });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
