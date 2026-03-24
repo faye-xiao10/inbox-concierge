@@ -1,7 +1,7 @@
 # Built
 
 ## Current Status
-Steps 1–11 + style system complete. Ready to build Step 12.
+Steps 1–11 + style system complete + bucket rename migration done. Ready to build Step 12.
 
 ## Completed Steps
 
@@ -191,6 +191,16 @@ src/
 - Full mode no longer clears embeddings — re-classify reuses vectors, only re-runs classification tiers
 - `securityFlags NOT NULL`: `resetForFullMode` sets `[]`, `sync.ts` always inserts `[]`
 - Tier 0 Updates/Forums passthrough: newsletter senders in Updates now hit Tier 1 domain matching correctly
+
+### Pre-Step 12: Bucket Rename Migration (branch: feature/bucket-rename)
+- src/lib/db/seed-buckets.ts — "Important" → "Direct" with new description; "Can Wait" → "Updates" with new description
+- src/lib/pipeline/tier0-tier1.ts — all `'Can Wait'` bucket name strings → `'Updates'`
+- src/lib/pipeline/triage.ts — BUCKET_BASE scores: `Important` → `Direct`, `'Can Wait'` → `Updates`
+- src/fixtures/demo-threads.json — all `bucketName: "Important"` → `"Direct"`, `"Can Wait"` → `"Updates"`
+- src/scripts/rename-buckets.ts — one-time migration script: updates existing DB rows for all users, deletes stale exemplars for renamed buckets
+- package.json — `rename-buckets` script added; `tsx` installed as dev dep
+
+**Migration output:** 4 buckets renamed (2 users), 15 stale exemplars deleted.
 
 ## Current File Tree
 ```
