@@ -431,6 +431,18 @@ src/
     reseed-exemplars.ts
 ```
 
+### Step 18: Pipeline Metrics Panel (branch: feature/step-18-metrics-panel)
+
+**New files:**
+- `src/components/graph/metrics-panel.tsx` — 100 lines; pure display component; props: `metrics: PipelineMetrics | null`, `isRunning: boolean`; renders null when both are falsy; "CLASSIFICATION METRICS" heading (uppercase, letter-spacing, var(--text-secondary)); 6-card 3-col grid; pulse placeholders while running; exemplars card shows breakdown subtext "Direct +12 · Newsletters +3" via `exemplarsByBucket`; CSS variables throughout
+
+**Modified files:**
+- `src/lib/pipeline/orchestrator.ts` — added `exemplarsByBucket?: { bucketName: string; count: number }[]` to `PipelineMetrics`; `computeMetrics` now filters `aiUsage` rows by `createdAt >= runStart` (new Date(startTime)) so llmCalls/estimatedCost reflect this run only, not all-time history; added `exemplarBucketRows` query (join categoryExemplars + buckets, grouped by bucket, sorted by count desc); added `gte` import
+- `src/lib/pipeline/llm-classify.ts` — fixed Gemini 2.5 Flash pricing: `0.10/0.40` → `0.15/0.60` per million tokens (spec-correct rates)
+- `src/components/graph/graph-view.tsx` — added `metrics` and `isRunning` props; renders MetricsPanel below graph+instructions
+- `src/components/inbox/bucket-tabs.tsx` — added `pipelineMetrics` state; `onRunningChange` clears metrics on run start; `onMetrics` callback on ClassifyButton; passes both to GraphView
+- `src/components/inbox/classify-button.tsx` — added `onMetrics?: (m: PipelineMetrics) => void`; calls it on `pipeline_complete`
+
 ## Known Issues
 (none)
 

@@ -8,6 +8,7 @@ import ClassifyButton, { type ClassifyButtonHandle } from './classify-button';
 import ManageBucketsButton from './manage-buckets-button';
 import ManageBucketsPanel, { type PanelBucket } from './manage-buckets-panel';
 import GraphView from '@/components/graph/graph-view';
+import type { PipelineMetrics } from '@/lib/pipeline/orchestrator';
 
 interface BucketTabsProps {
   threads: InboxThread[];
@@ -49,6 +50,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo, a
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [view, setView] = useState<'list' | 'graph'>('list');
   const [isClassifyRunning, setIsClassifyRunning] = useState(false);
+  const [pipelineMetrics, setPipelineMetrics] = useState<PipelineMetrics | null>(null);
   const [creationStatus, setCreationStatus] = useState<CreationStatus | null>(null);
   const [creationDone, setCreationDone] = useState<CreationDone | null>(null);
   const [overlapWarning, setOverlapWarning] = useState<OverlapWarning | null>(null);
@@ -288,12 +290,20 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo, a
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          <ClassifyButton ref={classifyButtonRef} isDemo={isDemo} onRunningChange={setIsClassifyRunning} />
+          <ClassifyButton
+            ref={classifyButtonRef}
+            isDemo={isDemo}
+            onRunningChange={(running) => {
+              setIsClassifyRunning(running);
+              if (running) setPipelineMetrics(null);
+            }}
+            onMetrics={setPipelineMetrics}
+          />
           <ManageBucketsButton onClick={() => setIsPanelOpen(true)} isDisabled={isClassifyRunning} />
         </div>
       </div>
       
-      {view === 'graph' && <GraphView isDemo={isDemo} />}
+      {view === 'graph' && <GraphView isDemo={isDemo} metrics={pipelineMetrics} isRunning={isClassifyRunning} />}
 
       {view === 'list' && (<>
       <div className="flex items-center mb-1">
