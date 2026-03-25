@@ -16,7 +16,9 @@ export async function PATCH(
   if (isNaN(bucketId)) return new Response(JSON.stringify({ error: 'Invalid bucket id' }), { status: 400 });
 
   let body: { name?: string; description?: string } = {};
-  try { body = await request.json(); } catch { /* use defaults */ }
+  try { body = await request.json(); } catch {
+    return new Response(JSON.stringify({ error: 'Invalid request body' }), { status: 400 });
+  }
 
   const name = (body.name ?? '').trim();
   const description = (body.description ?? '').trim();

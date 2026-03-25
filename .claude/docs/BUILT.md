@@ -342,6 +342,32 @@ Steps 1–11 + style system complete + bucket rename migration done. Ready to bu
 - `src/components/graph/graph-view.tsx` — added `isDemo?: boolean` prop; toast state (`{ message, visible }`); `handleReclassify` callback: shows toast, skips API in demo mode, calls `POST /api/reclassify`, applies `reEvaluated` node updates to local state; toast UI fixed bottom-center with CSS slide-up transition, 3s auto-dismiss; instructions line updated to mention drag
 - `src/components/inbox/bucket-tabs.tsx` — threads `isDemo` to `<GraphView isDemo={isDemo} />`
 
+### Step 18: Pipeline Metrics Panel + Patches (branch: feature/step-18-metrics-panel)
+
+**New files:**
+- `src/components/graph/metrics-panel.tsx` — "Pipeline Performance" heading; 6-card 3-col grid; pulse placeholders while running; cards: AI Efficiency (%), Classification Method (tier breakdown with counts), Total AI Operations, Avg Confidence (per-tier breakdown), Exemplars (with per-bucket subtext), Processing Time; System Methodology legend below; CSS variables throughout
+
+**Modified files:**
+- `src/lib/pipeline/orchestrator.ts` — `PipelineMetrics` type: added `exemplarsByBucket?: { bucketName; count }[]`, `avgConfidenceByTier: { tier; avg }[]`; removed `estimatedCost`; `computeMetrics` filters `aiUsage` by `createdAt >= runStart` so llmCalls reflects this run only; added per-bucket exemplar query (join + groupBy); added `AVG(confidence) GROUP BY tier` query; imports: `gte`, `sql`, `isNotNull` added; `sum` removed
+- `src/lib/pipeline/llm-classify.ts` — fixed Gemini 2.5 Flash pricing: `0.10/0.40` → `0.15/0.60` per million tokens
+- `src/components/graph/graph-view.tsx` — added `metrics?: PipelineMetrics | null` and `isRunning?: boolean` props; renders `<MetricsPanel>` below graph container
+- `src/components/inbox/bucket-tabs.tsx` — added `pipelineMetrics` state; `onRunningChange` clears metrics on run start; added `onMetrics={setPipelineMetrics}` to ClassifyButton; passes `metrics` + `isRunning` to GraphView
+- `src/components/inbox/classify-button.tsx` — added `onMetrics?: (m: PipelineMetrics) => void`; fires on `pipeline_complete`
+
+### Step 19A: Error Handling + Edge Cases (branch: feature/step-19a-error-handling)
+
+**New files:**
+- `src/app/not-found.tsx` — 404 page: centered full-viewport layout; "404" in Fraunces (`var(--font-heading)`) at 6rem; "This page doesn't exist."; "Return to Dashboard" link → `/inbox`; CSS variables throughout; server component
+- `src/components/ui/error-boundary.tsx` — React class component with `getDerivedStateFromError`; fallback UI: "Something went wrong" heading, error message in `<code>`, "Reload page" button (`window.location.reload()`); CSS variables, no Tailwind; `'use client'` directive
+
+**Modified files:**
+- `src/app/inbox/page.tsx` — imports `ErrorBoundary`; wraps `<BucketTabs>` in `<ErrorBoundary>`
+- `src/app/api/classify/route.ts` — clean, no rate limiting (trusts authenticated user)
+- `src/app/api/graph-data/route.ts` — `getGraphData` wrapped in try/catch; returns 500 `{ error: 'Failed to load graph data' }` on DB failure
+- `src/app/api/buckets/route.ts` — POST JSON parse catch returns 400 `{ error: 'Invalid request body' }` instead of silently using defaults
+- `src/app/api/buckets/[id]/route.ts` — PATCH JSON parse catch returns 400 `{ error: 'Invalid request body' }`
+- `src/components/graph/email-graph.tsx` — added `allFiltered` React state; filter effect calls `setAllFiltered(simNodes.filter(passes).length === 0)`; SVG renders centered `<text>` "No emails match the current filters" in `var(--text-tertiary)` when `allFiltered && nodes.length > 0`
+
 ## Current File Tree
 ```
 src/
@@ -368,6 +394,7 @@ src/
     inbox/loading.tsx
     inbox/page.tsx
     layout.tsx
+    not-found.tsx
     page.tsx
   components/
     graph/
@@ -387,7 +414,9 @@ src/
       empty-state.tsx
       manage-buckets-button.tsx
       manage-buckets-panel.tsx
-    ui/button.tsx
+    ui/
+      button.tsx
+      error-boundary.tsx
   fixtures/demo-threads.json
   lib/
     buckets/enrich-bucket.ts
@@ -431,18 +460,6 @@ src/
     reseed-direct.ts
     reseed-exemplars.ts
 ```
-
-### Step 18: Pipeline Metrics Panel + Patches (branch: feature/step-18-metrics-panel)
-
-**New files:**
-- `src/components/graph/metrics-panel.tsx` — "Pipeline Performance" heading; 6-card 3-col grid; pulse placeholders while running; cards: AI Efficiency (%), Classification Method (tier breakdown with counts), Total AI Operations, Avg Confidence (per-tier breakdown), Exemplars (with per-bucket subtext), Processing Time; System Methodology legend below; CSS variables throughout
-
-**Modified files:**
-- `src/lib/pipeline/orchestrator.ts` — `PipelineMetrics` type: added `exemplarsByBucket?: { bucketName; count }[]`, `avgConfidenceByTier: { tier; avg }[]`; removed `estimatedCost`; `computeMetrics` filters `aiUsage` by `createdAt >= runStart` so llmCalls reflects this run only; added per-bucket exemplar query (join + groupBy); added `AVG(confidence) GROUP BY tier` query; imports: `gte`, `sql`, `isNotNull` added; `sum` removed
-- `src/lib/pipeline/llm-classify.ts` — fixed Gemini 2.5 Flash pricing: `0.10/0.40` → `0.15/0.60` per million tokens
-- `src/components/graph/graph-view.tsx` — added `metrics?: PipelineMetrics | null` and `isRunning?: boolean` props; renders `<MetricsPanel>` below graph container
-- `src/components/inbox/bucket-tabs.tsx` — added `pipelineMetrics` state; `onRunningChange` clears metrics on run start; added `onMetrics={setPipelineMetrics}` to ClassifyButton; passes `metrics` + `isRunning` to GraphView
-- `src/components/inbox/classify-button.tsx` — added `onMetrics?: (m: PipelineMetrics) => void`; fires on `pipeline_complete`
 
 ## Known Issues
 (none)
