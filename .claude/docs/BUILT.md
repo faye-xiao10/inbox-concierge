@@ -483,6 +483,19 @@ src/
     reseed-exemplars.ts
 ```
 
+### Post-Step 12 Patch Set B: UI Polish + Speed Fix (branch: feature/ui-polish-and-speed-fix)
+
+**Verified:** SSE reclassify route order is correct — `runReclassification` fires immediately, Claude enrichment runs after `reclassify_complete`. No code change needed; decoupling was already in place.
+
+**Modified files:**
+- `src/app/globals.css` — added `.scrollbar-hide` as plain CSS (not `@utility`) for reliable cross-browser scrollbar suppression
+- `src/components/inbox/bucket-tabs.tsx` — `scrollbar-none` → `scrollbar-hide` on tab row; `hover:bg-secondary` on inactive tabs only (active tab has no hover bg)
+- `src/components/inbox/manage-buckets-panel.tsx`:
+  - Panel: deeper shadow (`0 8px 40px` + `0 2px 8px` two-layer), border opacity 0.4 → 0.25 for floating appearance
+  - Fixed `heading-sm` → `heading-md` (heading-sm was undefined)
+  - Idle bucket rows: full row is now click target for custom buckets (`cursor-pointer hover:bg-secondary` + `onClick → openEdit`); `✎` demoted to `<span>` since row handles click
+  - Exemplar section: "Examples" uppercase label added above chips; collapsed = single-line `truncate`; expanded = `pre-wrap break-word`; `(no text)` fallback added
+
 ## Known Issues
 (none)
 
