@@ -75,7 +75,6 @@ export async function runReclassification(
   const tier2Rows = rows.filter((r) => r.newDist < 0.22);
   const tier3Rows = rows.filter((r) => r.newDist >= 0.22 && r.newDist < 0.35);
 
-  console.log(`[reclassify] ingest candidates: tier2=${tier2Rows.length} tier3=${tier3Rows.length}`);
 
   let movedCount = 0;
 
@@ -200,7 +199,6 @@ export async function runReclassification(
   });
   await Promise.allSettled(evictOps);
 
-  console.log(`[reclassify] complete: moved=${movedCount} tier3=${tier3Count} evicted=${evictedCount} reassigned=${reassignedCount}`);
   onEvent({ type: 'eviction_complete', evictedCount, reassignedCount });
   onEvent({ type: 'reclassify_complete', movedCount, tier3Count });
 }
@@ -259,7 +257,6 @@ export async function runReclassifyDisplaced(
 
   const toReassign = rows.filter((r) => r.distance < 0.25);
 
-  console.log(`[reclassify-displaced] confident=${toReassign.length} leaving-uncategorized=${rows.length - toReassign.length}`);
 
   let movedCount = 0;
   const writeOps = toReassign.map((r) => {
@@ -272,6 +269,5 @@ export async function runReclassifyDisplaced(
   });
   await Promise.allSettled(writeOps);
 
-  console.log(`[reclassify-displaced] complete: moved=${movedCount}`);
   onEvent({ type: 'reclassify_complete', movedCount, tier3Count: 0 });
 }

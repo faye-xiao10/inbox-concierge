@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, isNull, count, sum } from 'drizzle-orm';
+import { and, eq, inArray, or, isNull, isNotNull, count, gte, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { classifications, buckets, categoryExemplars, aiUsage } from '@/lib/db/schema';
 import { syncGmailThreads } from '@/lib/gmail/sync';
@@ -19,9 +19,10 @@ export type PipelineMetrics = {
   tier2Count: number;
   tier3Count: number;
   llmCalls: number;
-  estimatedCost: number;
+  avgConfidenceByTier: { tier: number; avg: number }[];
   exemplarsAdded: number;
   durationMs: number;
+  exemplarsByBucket?: { bucketName: string; count: number }[];
 };
 
 export type PipelineEvent =
@@ -49,14 +50,30 @@ export type PipelineEvent =
 async function computeMetrics(userId: number, startTime: number): Promise<PipelineMetrics> {
   const bucketRows = await db.select({ id: buckets.id }).from(buckets).where(eq(buckets.userId, userId));
   const bucketIds = bucketRows.map((b) => b.id);
+  const runStart = new Date(startTime);
 
-  const [tierRows, costRows, llmRows, exemplarRows] = await Promise.all([
-    db.select({ tier: classifications.classificationTier, cnt: count() }).from(classifications).where(eq(classifications.userId, userId)).groupBy(classifications.classificationTier),
-    db.select({ total: sum(aiUsage.estimatedCost) }).from(aiUsage).where(eq(aiUsage.userId, userId)),
-    db.select({ cnt: count() }).from(aiUsage).where(eq(aiUsage.userId, userId)),
+  const [tierRows, tierConfRows, llmRows, exemplarRows, exemplarBucketRows] = await Promise.all([
+    db.select({ tier: classifications.classificationTier, cnt: count() })
+      .from(classifications).where(eq(classifications.userId, userId)).groupBy(classifications.classificationTier),
+    db.select({
+      tier: classifications.classificationTier,
+      avg: sql<string>`AVG(${classifications.confidence})`,
+    })
+      .from(classifications)
+      .where(and(eq(classifications.userId, userId), isNotNull(classifications.confidence), isNotNull(classifications.classificationTier)))
+      .groupBy(classifications.classificationTier),
+    db.select({ cnt: count() })
+      .from(aiUsage).where(and(eq(aiUsage.userId, userId), gte(aiUsage.createdAt, runStart))),
     bucketIds.length > 0
       ? db.select({ cnt: count() }).from(categoryExemplars).where(inArray(categoryExemplars.bucketId, bucketIds))
       : Promise.resolve([{ cnt: 0 }]),
+    bucketIds.length > 0
+      ? db.select({ name: buckets.name, cnt: count() })
+          .from(categoryExemplars)
+          .innerJoin(buckets, eq(categoryExemplars.bucketId, buckets.id))
+          .where(eq(buckets.userId, userId))
+          .groupBy(buckets.id, buckets.name)
+      : Promise.resolve([] as { name: string; cnt: unknown }[]),
   ]);
 
   const getTier = (t: number) => Number(tierRows.find((r) => r.tier === t)?.cnt ?? 0);
@@ -69,9 +86,15 @@ async function computeMetrics(userId: number, startTime: number): Promise<Pipeli
     tier2Count: getTier(2),
     tier3Count: getTier(3),
     llmCalls: Number(llmRows[0]?.cnt ?? 0),
-    estimatedCost: Number(costRows[0]?.total ?? 0),
+    avgConfidenceByTier: tierConfRows
+      .map((r) => ({ tier: Number(r.tier), avg: Math.round(Number(r.avg) * 100) }))
+      .sort((a, b) => a.tier - b.tier),
     exemplarsAdded: Number(exemplarRows[0]?.cnt ?? 0),
     durationMs: Date.now() - startTime,
+    exemplarsByBucket: exemplarBucketRows
+      .map((r) => ({ bucketName: r.name, count: Number(r.cnt) }))
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.count - a.count),
   };
 }
 

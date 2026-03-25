@@ -7,6 +7,7 @@ import type { PipelineEvent, PipelineMetrics } from '@/lib/pipeline/orchestrator
 interface ClassifyButtonProps {
   isDemo: boolean;
   onRunningChange?: (isRunning: boolean) => void;
+  onMetrics?: (metrics: PipelineMetrics) => void;
 }
 
 export interface ClassifyButtonHandle {
@@ -15,7 +16,7 @@ export interface ClassifyButtonHandle {
 
 type ClassifyStatus = 'idle' | 'running' | 'complete' | 'error';
 
-const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(function ClassifyButton({ isDemo, onRunningChange }, ref) {
+const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(function ClassifyButton({ isDemo, onRunningChange, onMetrics }, ref) {
   const router = useRouter();
   const [status, setStatus] = useState<ClassifyStatus>('idle');
   const [stage, setStage] = useState('');
@@ -24,6 +25,7 @@ const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(fun
   const [tier3Total, setTier3Total] = useState<number | null>(null);
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [demoTooltip, setDemoTooltip] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleEvent(event: PipelineEvent) {
@@ -57,6 +59,7 @@ const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(fun
       case 'triage_complete': setStage('Finishing up...'); break;
       case 'pipeline_complete':
         setMetrics(event.metrics);
+        onMetrics?.(event.metrics);
         setStatus('complete');
         onRunningChange?.(false);
         router.refresh();
@@ -155,6 +158,35 @@ const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(fun
         <span className="body-sm" style={{ color: 'var(--color-error)' }}>⚠ {errorMessage}</span>
         <button className="btn-ghost btn-sm" onClick={() => { setStatus('idle'); setErrorMessage(''); }}>
           Retry
+        </button>
+      </div>
+    );
+  }
+
+  // Demo mode — visually disabled button with hover tooltip
+  if (isDemo) {
+    return (
+      <div style={{ position: 'relative', display: 'inline-block' }}
+        onMouseEnter={() => setDemoTooltip(true)}
+        onMouseLeave={() => setDemoTooltip(false)}
+      >
+        {demoTooltip && (
+          <div style={{
+            position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-sm)', padding: '4px 10px',
+            fontSize: '0.75rem', color: 'var(--text-secondary)',
+            whiteSpace: 'nowrap', zIndex: 50,
+            boxShadow: 'var(--shadow-sm)',
+          }}>
+            <a href="/api/auth/google" style={{ color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 500 }}>
+              Connect your Gmail to classify your real inbox →
+            </a>
+          </div>
+        )}
+        <button className="btn-primary btn-md" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+          Classify Inbox
         </button>
       </div>
     );

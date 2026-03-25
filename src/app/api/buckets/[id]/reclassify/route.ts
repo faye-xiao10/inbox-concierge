@@ -13,11 +13,9 @@ async function enrichAndSave(
   bucketDescription: string,
   force: boolean,
 ): Promise<void> {
-  console.log(`[enrichAndSave] starting for bucketId=${bucketId}`);
   try {
     const enrichResult = await enrichBucket(bucketName, bucketDescription, userId, force);
 
-    console.log(`[enrichAndSave] Saving enrichment: ${enrichResult.exemplarVectors.length} exemplars`);
     await db.update(buckets)
       .set({ enrichedDescription: enrichResult.enrichedDescription, boundaryNotes: enrichResult.boundaryNotes })
       .where(eq(buckets.id, bucketId));
@@ -34,7 +32,6 @@ async function enrichAndSave(
         }),
       ),
     );
-    console.log(`[enrichAndSave] complete for bucketId=${bucketId} overlapping=${enrichResult.overlapping}`);
   } catch (err) {
     console.error(`[enrichAndSave] failed for bucketId=${bucketId}:`, err);
   }
@@ -68,7 +65,6 @@ export async function POST(
 
   const needsEnrichment = !bucket.enrichedDescription || Number(exemplarCount) === 0;
 
-  console.log(`[reclassify] bucketId=${bucketId} needsEnrichment=${needsEnrichment} force=${force}`);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

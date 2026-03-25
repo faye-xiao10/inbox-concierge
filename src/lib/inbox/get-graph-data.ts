@@ -46,21 +46,14 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
         umapY: classifications.umapY,
       })
       .from(classifications)
-      .innerJoin(buckets, eq(classifications.bucketId, buckets.id))
+      .leftJoin(buckets, eq(classifications.bucketId, buckets.id))
       .where(
         and(
           eq(classifications.userId, userId),
-          isNotNull(classifications.bucketId),
+          isNotNull(classifications.umapX),
         ),
       )
       .orderBy(desc(classifications.timestamp));
-
-    const noUmap = rows.filter((r) => r.umapX === null).length;
-    if (noUmap > 0) {
-      console.log(`[graph-data] userId=${userId}: ${rows.length} emails returned, ${noUmap} missing UMAP coords (placed at origin)`);
-    } else {
-      console.log(`[graph-data] userId=${userId}: ${rows.length} emails returned, all have UMAP coords`);
-    }
 
     return rows.map((row) => ({
       threadId: row.threadId,
@@ -68,8 +61,8 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
       senderName: row.senderName ?? '',
       senderEmail: row.senderEmail ?? '',
       snippet: row.snippet ?? '',
-      bucketId: row.bucketId!,
-      bucketName: row.bucketName ?? 'Unknown',
+      bucketId: row.bucketId ?? 0,
+      bucketName: row.bucketName ?? 'Classifying...',
       bucketColor: row.bucketColor ?? '#888888',
       classificationTier: row.classificationTier ?? 0,
       confidence: row.confidence ?? 1.0,

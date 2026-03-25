@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   // WHERE classification_tier IN (0, 1);
   try {
     const summary = await runTier0AndTier1(session.userId);
-    console.log('Tier 0/1 classification complete:', summary);
+    console.warn('Tier 0/1 classification complete:', summary);
     return NextResponse.json(summary);
   } catch (error) {
     return NextResponse.json(

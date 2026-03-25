@@ -14,15 +14,20 @@ export default function EmailList({ threads, bucketName, isDemo }: EmailListProp
   }
 
   return (
-    <ul
-      className="bg-elevated rounded-lg overflow-hidden mt-2"
-      style={{ boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-subtle)' }}
+    <div
+      className="scrollbar-hide"
+      style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}
     >
-      {threads.map((thread) => (
-        <li key={thread.threadId} style={{ borderBottom: '1px solid var(--border-subtle)' }} className="last:border-0">
-          <EmailRow thread={thread} isDemo={isDemo} />
-        </li>
-      ))}
-    </ul>
+      <ul
+        className="bg-elevated rounded-lg overflow-hidden mt-2"
+        style={{ boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-subtle)' }}
+      >
+        {threads.map((thread) => (
+          <li key={thread.threadId} style={{ borderBottom: '1px solid var(--border-subtle)' }} className="last:border-0">
+            <EmailRow thread={thread} isDemo={isDemo} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

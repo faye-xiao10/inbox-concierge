@@ -40,8 +40,6 @@ export async function enrichBucket(
   userId: number,
   skipOverlapCheck = false,
 ): Promise<EnrichResult> {
-  console.log(`[enrichBucket] starting for bucket: "${name}" userId=${userId} skipOverlapCheck=${skipOverlapCheck}`);
-
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
@@ -75,7 +73,6 @@ Make the examples specific and realistic — use real-sounding sender names, ema
 Bucket name: ${name}
 Description: ${description}`;
 
-  console.log('[enrichBucket] calling Gemini...');
   const result = await withRetry(
     () => model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -83,8 +80,6 @@ Description: ${description}`;
     }),
     2,
   );
-  console.log('[enrichBucket] Gemini response received');
-
   const usage = result.response.usageMetadata;
   const cost = ((usage?.promptTokenCount ?? 0) / 1_000_000) * 0.10 + ((usage?.candidatesTokenCount ?? 0) / 1_000_000) * 0.40;
   await db.insert(aiUsage).values({
@@ -104,21 +99,16 @@ Description: ${description}`;
     exemplarTexts: string[];
   };
 
-  console.log('[enrichBucket] embedding exemplars...');
   const exemplarVectors = await batchEmbed(exemplarTexts, userId);
-  console.log('[enrichBucket] embedding complete:', exemplarVectors.length, 'vectors');
   const newCentroid = centroid(exemplarVectors);
 
   let overlapResult: { conflictingBucketName: string; similarity: number } | null = null;
 
-  console.log('[enrichBucket] running overlap check...');
   if (!skipOverlapCheck) {
     const existingBuckets = await db
       .select({ id: buckets.id, name: buckets.name })
       .from(buckets)
       .where(eq(buckets.userId, userId));
-
-    console.log(`[enrichBucket] checking overlap against ${existingBuckets.length} existing buckets`);
 
     for (const bucket of existingBuckets) {
       const exemplarRows = await db
@@ -134,16 +124,13 @@ Description: ${description}`;
       const bucketCentroid = centroid(validVectors);
       if (bucketCentroid.length === 0) continue;
       const similarity = cosine(newCentroid, bucketCentroid);
-      console.log(`[enrichBucket] similarity with "${bucket.name}": ${similarity.toFixed(4)}`);
       if (similarity > 0.88) {
         overlapResult = { conflictingBucketName: bucket.name, similarity };
         break;
       }
     }
   }
-  console.log('[enrichBucket] overlap check complete');
 
-  console.log('[enrichBucket] returning result');
   return {
     overlapping: !!overlapResult,
     conflictingBucketName: overlapResult?.conflictingBucketName,

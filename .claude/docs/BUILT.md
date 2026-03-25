@@ -331,6 +331,43 @@ Steps 1–11 + style system complete + bucket rename migration done. Ready to bu
 - `src/components/inbox/classify-button.tsx` — added `onRunningChange?: (isRunning: boolean) => void` prop; calls `onRunningChange?.(true)` at start of `startClassify`; calls `onRunningChange?.(false)` on `pipeline_complete` and `error` events
 - `package.json` / `pnpm-lock.yaml` — added `@vercel/functions` (installed for `waitUntil` exploration, kept as dependency)
 
+### Step 15: Drag-to-Reclassify (branch: feature/step-15-drag-reclassify)
+
+**New files:**
+- `src/app/api/reclassify/route.ts` — POST, session-gated; validates threadId + newBucketId belong to user; updates classification (tier=1, confidence=1.0); inserts `categoryExemplars` row (source='manual', weight=1.0); logs to `reclassificationLog` (source='manual_drag') when fromBucketId is non-null; re-evaluates top 10 nearby ambiguous neighbors (confidence < 0.70) via pgvector distance ordering + Tier 2 resolveClassification logic; returns `{ success, reEvaluated: { threadId, newBucketId }[] }`
+- `src/components/graph/drag-behavior.ts` — pure D3/TS (no React); `DragNode` interface; `setupDragBehavior<N>` function: attaches `d3.drag()` to circles, manages centroid ring circles (r=28, pulse 28→34→28 on hover target), tracks `originalBucket`/`highlightedBucket` in closure refs, optimistically updates node fill color on drop, calls `onDrop` callback; rings positioned at centroid locations computed at dragstart
+
+**Modified files:**
+- `src/components/graph/email-graph.tsx` — full rewrite to stay under 200 lines (199 lines); added `onReclassify?` prop; creates `ringsG` group before `nodesG`; calls `setupDragBehavior` when `onReclassify` provided; cursor `grab` when drag enabled
+- `src/components/graph/graph-view.tsx` — added `isDemo?: boolean` prop; toast state (`{ message, visible }`); `handleReclassify` callback: shows toast, skips API in demo mode, calls `POST /api/reclassify`, applies `reEvaluated` node updates to local state; toast UI fixed bottom-center with CSS slide-up transition, 3s auto-dismiss; instructions line updated to mention drag
+- `src/components/inbox/bucket-tabs.tsx` — threads `isDemo` to `<GraphView isDemo={isDemo} />`
+
+### Step 18: Pipeline Metrics Panel + Patches (branch: feature/step-18-metrics-panel)
+
+**New files:**
+- `src/components/graph/metrics-panel.tsx` — "Pipeline Performance" heading; 6-card 3-col grid; pulse placeholders while running; cards: AI Efficiency (%), Classification Method (tier breakdown with counts), Total AI Operations, Avg Confidence (per-tier breakdown), Exemplars (with per-bucket subtext), Processing Time; System Methodology legend below; CSS variables throughout
+
+**Modified files:**
+- `src/lib/pipeline/orchestrator.ts` — `PipelineMetrics` type: added `exemplarsByBucket?: { bucketName; count }[]`, `avgConfidenceByTier: { tier; avg }[]`; removed `estimatedCost`; `computeMetrics` filters `aiUsage` by `createdAt >= runStart` so llmCalls reflects this run only; added per-bucket exemplar query (join + groupBy); added `AVG(confidence) GROUP BY tier` query; imports: `gte`, `sql`, `isNotNull` added; `sum` removed
+- `src/lib/pipeline/llm-classify.ts` — fixed Gemini 2.5 Flash pricing: `0.10/0.40` → `0.15/0.60` per million tokens
+- `src/components/graph/graph-view.tsx` — added `metrics?: PipelineMetrics | null` and `isRunning?: boolean` props; renders `<MetricsPanel>` below graph container
+- `src/components/inbox/bucket-tabs.tsx` — added `pipelineMetrics` state; `onRunningChange` clears metrics on run start; added `onMetrics={setPipelineMetrics}` to ClassifyButton; passes `metrics` + `isRunning` to GraphView
+- `src/components/inbox/classify-button.tsx` — added `onMetrics?: (m: PipelineMetrics) => void`; fires on `pipeline_complete`
+
+### Step 19A: Error Handling + Edge Cases (branch: feature/step-19a-error-handling)
+
+**New files:**
+- `src/app/not-found.tsx` — 404 page: centered full-viewport layout; "404" in Fraunces (`var(--font-heading)`) at 6rem; "This page doesn't exist."; "Return to Dashboard" link → `/inbox`; CSS variables throughout; server component
+- `src/components/ui/error-boundary.tsx` — React class component with `getDerivedStateFromError`; fallback UI: "Something went wrong" heading, error message in `<code>`, "Reload page" button (`window.location.reload()`); CSS variables, no Tailwind; `'use client'` directive
+
+**Modified files:**
+- `src/app/inbox/page.tsx` — imports `ErrorBoundary`; wraps `<BucketTabs>` in `<ErrorBoundary>`
+- `src/app/api/classify/route.ts` — clean, no rate limiting (trusts authenticated user)
+- `src/app/api/graph-data/route.ts` — `getGraphData` wrapped in try/catch; returns 500 `{ error: 'Failed to load graph data' }` on DB failure
+- `src/app/api/buckets/route.ts` — POST JSON parse catch returns 400 `{ error: 'Invalid request body' }` instead of silently using defaults
+- `src/app/api/buckets/[id]/route.ts` — PATCH JSON parse catch returns 400 `{ error: 'Invalid request body' }`
+- `src/components/graph/email-graph.tsx` — added `allFiltered` React state; filter effect calls `setAllFiltered(simNodes.filter(passes).length === 0)`; SVG renders centered `<text>` "No emails match the current filters" in `var(--text-tertiary)` when `allFiltered && nodes.length > 0`
+
 ## Current File Tree
 ```
 src/
@@ -348,6 +385,7 @@ src/
       classify/route.ts
       embed/route.ts
       graph-data/route.ts
+      reclassify/route.ts
       sync/route.ts
       tier0-tier1/route.ts
       tier2/route.ts
@@ -356,15 +394,18 @@ src/
     inbox/loading.tsx
     inbox/page.tsx
     layout.tsx
+    not-found.tsx
     page.tsx
   components/
     graph/
+      drag-behavior.ts
       email-graph.tsx
       filter-panel.tsx
       filter-types.ts
       graph-tooltip.tsx
       graph-utils.ts
       graph-view.tsx
+      metrics-panel.tsx
     inbox/
       bucket-tabs.tsx
       classify-button.tsx
@@ -373,7 +414,9 @@ src/
       empty-state.tsx
       manage-buckets-button.tsx
       manage-buckets-panel.tsx
-    ui/button.tsx
+    ui/
+      button.tsx
+      error-boundary.tsx
   fixtures/demo-threads.json
   lib/
     buckets/enrich-bucket.ts
@@ -418,8 +461,161 @@ src/
     reseed-exemplars.ts
 ```
 
+### fix/llm-calls-metric: LLM Calls Metric Diagnosis (branch: fix/llm-calls-metric)
+
+**Investigation:** `Total AI Operations` in metrics panel always shows 1 regardless of actual API calls.
+
+**Findings:**
+- `aiUsage` insert in `llm-classify.ts` is correctly per-batch — `logUsage()` fires once per `classifyBatchWithFallback` call, which is called once per batch inside the `tier3.ts` loop. Nothing is hoisted outside.
+- Diagnostic logs added to `orchestrator.ts` (`computeMetrics`), `gemini-embed.ts`, and `llm-classify.ts` to capture raw `aiUsage` query result, `llmRows` count value, `runStart` timestamp, and per-insert timestamps — then removed after confirming insert structure.
+- Root cause not yet isolated. Likely candidates: `gte(aiUsage.createdAt, runStart)` timestamp comparison issue with Neon HTTP driver, or `count()` Drizzle aggregate returning unexpected value. Requires a live classify run with logs to confirm.
+
+### fix/graph-mid-pipeline-flicker: Graph Mid-Pipeline Stability (branch: fix/graph-mid-pipeline-flicker)
+
+**Bug:** During a classify run, `resetForFullMode` nulls `bucketId` on default-bucket emails. The graph inner-joined on `bucketId`, so those emails vanished mid-run — graph dropped from 229 → 34 nodes while classifying.
+
+**Fix — `src/lib/inbox/get-graph-data.ts` only:**
+- `innerJoin(buckets, ...)` → `leftJoin(buckets, ...)` — emails without a bucket no longer excluded
+- WHERE `isNotNull(classifications.bucketId)` → `isNotNull(classifications.umapX)` — include all emails with UMAP positions regardless of bucket state
+- Row mapping: `bucketId: row.bucketId ?? 0`, `bucketName: row.bucketName ?? 'Classifying...'` — null-bucket emails render as grey nodes mid-pipeline, snap to cluster on completion
+
+### feature/homepage-redesign: Marketing Landing Page (branch: feature/homepage-redesign)
+
+**New files:**
+- `src/app/page.tsx` — full rewrite as marketing landing page (server component): Nav (sticky, wordmark hidden on mobile) → Hero (2-col grid, text + visual split) → Feature cards (3-col responsive grid, 6 cards) → Footer; all CSS variables, no new deps
+- `src/components/landing/pipeline-animation.tsx` — `'use client'`; 5-stage pipeline diagram with sequential gold-border pulse (800ms per stage, loops); uses `useState` + `setInterval`
+
+**Modified files:**
+- `src/app/globals.css` — added 6 `@keyframes lp-float-*` animations for SVG node float effect (3–5px amplitude, prefixed to avoid conflicts)
+- `src/app/inbox/page.tsx` — demo mode banner: slim white bar at top of inbox when `session.isDemo`, info icon + "You're in demo mode — 20 fixture emails." + gold "Connect your Gmail →" link to `/api/auth/google`
+
+**Landing page sections:**
+1. Nav: "Inbox Concierge" wordmark (hidden mobile) + "Try Demo" (secondary) + "Sign in with Google" (primary gold)
+2. Hero: headline "Your inbox, finally sorted." in Fraunces 3.5rem; subhead; 2 stacked CTAs; trust line; right column = animated SVG graph cluster (40 nodes, 5 bucket colors, 6 float animations, cluster labels) + pipeline animation split by divider
+3. Features: 6 cards — 4-Tier Classification, Streams Live, Semantic Graph View, Custom Buckets, Pipeline Metrics, Security Scanning; inline SVG icons; 1/2/3 col responsive
+4. Footer: centered tech stack line
+
+**SVG graph node colors (hardcoded, from seed-buckets.ts):** Direct #3B82F6 · Updates #F59E0B · Newsletters #14B8A6 · Promotions #22C55E · Auto-Archive #6B7280
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      buckets/[id]/exemplars/route.ts
+      buckets/[id]/reclassify/route.ts
+      buckets/[id]/route.ts
+      buckets/reclassify-displaced/route.ts  ← gutted (410)
+      buckets/route.ts
+      classify/route.ts
+      embed/route.ts
+      graph-data/route.ts
+      reclassify/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    not-found.tsx
+    page.tsx
+  components/
+    graph/
+      drag-behavior.ts
+      email-graph.tsx
+      filter-panel.tsx
+      filter-types.ts
+      graph-tooltip.tsx
+      graph-utils.ts
+      graph-view.tsx
+      metrics-panel.tsx
+    inbox/
+      bucket-tabs.tsx
+      classify-button.tsx
+      email-list.tsx
+      email-row.tsx
+      empty-state.tsx
+      manage-buckets-button.tsx
+      manage-buckets-panel.tsx
+    landing/
+      pipeline-animation.tsx
+    ui/
+      button.tsx
+      error-boundary.tsx
+  fixtures/demo-threads.json
+  lib/
+    buckets/enrich-bucket.ts
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-graph-data.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/reclassify.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+  scripts/
+    check-exemplars.ts
+    embed-existing-buckets.ts
+    rename-buckets.ts
+    reseed-demo.ts
+    reseed-direct.ts
+    reseed-exemplars.ts
+```
+
+### Demo mode polish (branch: dev)
+
+**classify-button.tsx:**
+- Replaced click-to-toggle nudge with CSS hover tooltip above the button
+- `onMouseEnter`/`onMouseLeave` drives `demoTooltip` state; tooltip is absolutely positioned, `var(--bg-elevated)` card with border + shadow; gold anchor link "Connect your Gmail to classify your real inbox →"
+- Button stays `opacity: 0.5 / cursor: not-allowed`; removed `showDemoNudge` state
+
+**manage-buckets-panel.tsx:**
+- Demo lock banner added below panel heading: "🔒 Connect your Gmail to create custom buckets →"; new bucket form already gated by `{!isDemo}`
+
+**orchestrator.ts:**
+- Reverted demo reset guard (`resetForFullMode` signature back to `(userId: number)`) — redundant since demo users can't trigger classify
+
+**seed-demo.ts:**
+- Added `console.warn` when `bucketMap.get(bucketName)` returns null, logging available bucket names for diagnosis
+
+**src/scripts/reseed-demo.ts (new):**
+- Finds demo user by email `demo@inboxconcierge.app`, deletes all their classifications, re-runs `seedDemoUser(userId, bucketRows)` fresh
+- `package.json`: added `"reseed-demo"` script
+- Ran successfully: deleted 20 rows, re-seeded 20 with correct bucketIds, no name-mismatch warnings
+
 ## Known Issues
-(none)
+- `Total AI Operations` metric always shows 1 — insert structure confirmed correct; root cause (filter vs. aggregation) pending live run confirmation
 
 ## Notes
 - Update this file after completing each step in PLAN.md
