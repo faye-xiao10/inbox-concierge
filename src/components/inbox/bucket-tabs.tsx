@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { InboxThread } from '@/lib/inbox/get-inbox-threads';
 import EmailList from './email-list';
+import ClassifyButton, { type ClassifyButtonHandle } from './classify-button';
 import ManageBucketsButton from './manage-buckets-button';
 import ManageBucketsPanel, { type PanelBucket } from './manage-buckets-panel';
 
@@ -44,6 +45,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
   const [creationDone, setCreationDone] = useState<CreationDone | null>(null);
   const [overlapWarning, setOverlapWarning] = useState<OverlapWarning | null>(null);
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const classifyButtonRef = useRef<ClassifyButtonHandle>(null);
 
   const countFor = (bucketId: number | null) =>
     threads.filter((t) => (bucketId === UNCATEGORIZED_ID ? t.bucketId === null : t.bucketId === bucketId)).length;
@@ -66,7 +68,13 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
 
   function handleBucketCreated(bucket: PanelBucket) {
     setBuckets((prev) => [...prev, bucket]);
+    setActiveId(bucket.id);
     startCreationSSE(bucket.id, bucket.name);
+  }
+
+  function handleBucketUpdated(bucketId: number) {
+    const bucket = buckets.find((b) => b.id === bucketId);
+    startCreationSSE(bucketId, bucket?.name ?? 'bucket');
   }
 
   function handleForceCreate() {
@@ -76,60 +84,14 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
     startCreationSSE(bucketId, bucketName, true);
   }
 
-  function handleBucketDeleted(bucketId: number, _bucketName: string, displacedThreadIds: string[]) {
-    setBuckets((prev) => prev.filter((b) => b.id !== bucketId));
-    if (displacedThreadIds.length > 0) {
-      startDisplacedSSE(displacedThreadIds);
-    } else {
-      router.refresh();
-    }
-  }
-
-  async function startDisplacedSSE(threadIds: string[]) {
-    const label = `Reclassifying ${threadIds.length} displaced email${threadIds.length !== 1 ? 's' : ''}`;
-    setCreationStatus({ bucketName: '', phase: 'Reclassifying...', checked: threadIds.length, moved: 0, label });
-    setCreationDone(null);
-
-    try {
-      const res = await fetch('/api/buckets/reclassify-displaced', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ threadIds }),
-      });
-      if (!res.ok || !res.body) { router.refresh(); return; }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const event = JSON.parse(line.slice(6)) as Record<string, unknown>;
-            if (event.type === 'classification_result') {
-              setCreationStatus((prev) => prev ? { ...prev, moved: prev.moved + 1 } : null);
-            } else if (event.type === 'reclassify_complete') {
-              const movedCount = (event.movedCount as number) ?? 0;
-              setCreationStatus(null);
-              setCreationDone({ bucketName: '', movedCount, doneLabel: `✓ ${movedCount} email${movedCount !== 1 ? 's' : ''} reclassified` });
-              if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
-              doneTimerRef.current = setTimeout(() => { setCreationDone(null); router.refresh(); }, 3000);
-              return;
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    } catch {
-      setCreationStatus(null);
-      router.refresh();
-    }
+  function handleBucketDeleted(bucketId: number, _bucketName: string) {
+    setBuckets((prev) => {
+      const remaining = prev.filter((b) => b.id !== bucketId);
+      const directBucket = remaining.find((b) => b.name === 'Direct');
+      if (directBucket) setActiveId(directBucket.id);
+      return remaining;
+    });
+    classifyButtonRef.current?.startClassify();
   }
 
   async function startCreationSSE(bucketId: number, bucketName: string, force = false) {
@@ -215,9 +177,18 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="heading-xl" style={{ color: 'var(--text-primary)' }}>Inbox</h1>
+        <div className="flex items-center gap-2">
+          <ClassifyButton ref={classifyButtonRef} isDemo={isDemo} />
+          <ManageBucketsButton onClick={() => setIsPanelOpen(true)} />
+        </div>
+      </div>
+
+      <div className="flex items-center mb-1">
         <div
-          className="flex gap-1 overflow-x-auto flex-1"
+          className="flex gap-1 overflow-x-auto scrollbar-none flex-1"
           style={{ borderBottom: '1px solid var(--border-default)' }}
         >
           {buckets.map((bucket) => {
@@ -269,9 +240,6 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
               </span>
             </button>
           )}
-        </div>
-        <div className="pl-3 pb-1 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-default)' }}>
-          <ManageBucketsButton onClick={() => setIsPanelOpen(true)} />
         </div>
       </div>
 
@@ -329,6 +297,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
         isDemo={isDemo}
         onBucketCreated={handleBucketCreated}
         onBucketDeleted={handleBucketDeleted}
+        onBucketUpdated={handleBucketUpdated}
         onBucketsChanged={handleBucketsChanged}
       />
     </div>

@@ -33,11 +33,23 @@ export async function POST(
       const emit = (event: PipelineEvent) => {
         controller.enqueue(encoder.encode('data: ' + JSON.stringify(event) + '\n\n'));
       };
-      try {
-        // Enrich if not yet done (enrichedDescription is null after fast POST)
-        if (!bucket.enrichedDescription) {
-          emit({ type: 'bucket_enriching', message: 'Generating exemplars for new bucket...' });
 
+      try {
+        // 1. Reclassify immediately — bucket.embedding set by POST handler before SSE started.
+        //    runReclassification emits progress events and reclassify_complete internally.
+        //    The client may close its reader after receiving reclassify_complete.
+        emit({ type: 'bucket_enriching', message: 'Setting up bucket...' });
+        await runReclassification(session.userId, bucketId, emit);
+      } catch (error) {
+        emit({ type: 'error', message: String(error), stage: 'reclassify' });
+        controller.close();
+        return;
+      }
+
+      // 2. Enrich after reclassification — generates exemplars for future pipeline runs.
+      //    Client may have already closed its reader; overlap_warning is advisory-only here.
+      if (!bucket.enrichedDescription) {
+        try {
           const enrichResult = await enrichBucket(bucket.name, bucket.description ?? '', session.userId, force);
 
           if (enrichResult.overlapping) {
@@ -46,35 +58,30 @@ export async function POST(
               conflictingBucketName: enrichResult.conflictingBucketName,
               similarity: Math.round(enrichResult.similarity * 100),
             });
-            controller.close();
-            return;
+          } else {
+            await db.update(buckets)
+              .set({ enrichedDescription: enrichResult.enrichedDescription, boundaryNotes: enrichResult.boundaryNotes })
+              .where(eq(buckets.id, bucketId));
+
+            await Promise.allSettled(
+              enrichResult.exemplarVectors.map((embedding, i) =>
+                db.insert(categoryExemplars).values({
+                  bucketId,
+                  embedding,
+                  text: enrichResult.exemplarTexts[i] ?? null,
+                  source: 'synthetic',
+                  weight: 0.5,
+                  sourceThreadId: null,
+                }),
+              ),
+            );
           }
-
-          // Persist enrichment + exemplars
-          await db.update(buckets)
-            .set({ enrichedDescription: enrichResult.enrichedDescription, boundaryNotes: enrichResult.boundaryNotes })
-            .where(eq(buckets.id, bucketId));
-
-          await Promise.allSettled(
-            enrichResult.exemplarVectors.map((embedding, i) =>
-              db.insert(categoryExemplars).values({
-                bucketId,
-                embedding,
-                text: enrichResult.exemplarTexts[i] ?? null,
-                source: 'synthetic',
-                weight: 0.5,
-                sourceThreadId: null,
-              }),
-            ),
-          );
+        } catch (enrichErr) {
+          console.error('[reclassify] Enrichment failed (non-fatal):', enrichErr);
         }
-
-        await runReclassification(session.userId, bucketId, emit);
-      } catch (error) {
-        emit({ type: 'error', message: String(error), stage: 'reclassify' });
-      } finally {
-        controller.close();
       }
+
+      controller.close();
     },
   });
 

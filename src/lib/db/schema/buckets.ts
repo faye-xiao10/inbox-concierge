@@ -7,6 +7,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core';
+import { vector } from '../vector';
 import { users } from './users';
 
 export const buckets = pgTable(
@@ -23,6 +24,7 @@ export const buckets = pgTable(
     color: text('color').notNull(),
     isDefault: boolean('is_default').notNull().default(false),
     sortOrder: integer('sort_order').notNull(),
+    embedding: vector('embedding', { dimensions: 384 }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => ({

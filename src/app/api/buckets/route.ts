@@ -2,6 +2,7 @@ import { eq, asc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { buckets } from '@/lib/db/schema';
 import { getSession } from '@/lib/session';
+import { batchEmbed } from '@/lib/embed/gemini-embed';
 
 const CUSTOM_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#06B6D4', '#84CC16'];
 
@@ -47,6 +48,14 @@ export async function POST(request: Request): Promise<Response> {
     userId: session.userId, name, description,
     color, sortOrder, isDefault: false,
   }).returning();
+
+  // Embed the bucket so reclassification can start immediately (before enrichment)
+  try {
+    const [embedding] = await batchEmbed([`${name}: ${description}`], session.userId);
+    await db.update(buckets).set({ embedding }).where(eq(buckets.id, newBucket.id));
+  } catch (embedErr) {
+    console.error('[buckets] Failed to embed new bucket:', embedErr);
+  }
 
   return new Response(JSON.stringify({ status: 'created', bucket: newBucket }), { headers: { 'Content-Type': 'application/json' } });
 }

@@ -18,7 +18,8 @@ interface ManageBucketsPanelProps {
   buckets: PanelBucket[];
   isDemo: boolean;
   onBucketCreated: (bucket: PanelBucket) => void;
-  onBucketDeleted: (bucketId: number, bucketName: string, displacedThreadIds: string[]) => void;
+  onBucketDeleted: (bucketId: number, bucketName: string) => void;
+  onBucketUpdated?: (bucketId: number) => void;
   onBucketsChanged: () => void;
 }
 
@@ -29,7 +30,9 @@ interface Exemplar {
   text: string | null;
 }
 
-export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBuckets, isDemo, onBucketCreated, onBucketDeleted, onBucketsChanged }: ManageBucketsPanelProps) {
+const DEFAULT_BUCKET_NAMES = new Set(['Direct', 'Updates', 'Newsletters', 'Promotions', 'Auto-Archive']);
+
+export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBuckets, isDemo, onBucketCreated, onBucketDeleted, onBucketUpdated, onBucketsChanged }: ManageBucketsPanelProps) {
   const [buckets, setBuckets] = useState<PanelBucket[]>(initialBuckets);
 
   // New bucket form
@@ -43,11 +46,14 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [originalDesc, setOriginalDesc] = useState('');
   const [exemplars, setExemplars] = useState<Exemplar[]>([]);
   const [exemplarsLoading, setExemplarsLoading] = useState(false);
+  const [expandedExemplarIds, setExpandedExemplarIds] = useState<Set<number>>(new Set());
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'done' | 'error'>('idle');
   const [saveError, setSaveError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingReclassify, setConfirmingReclassify] = useState(false);
   const [toast, setToast] = useState('');
 
   function showToast(msg: string) {
@@ -59,10 +65,13 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
     setEditingId(bucket.id);
     setEditName(bucket.name);
     setEditDesc(bucket.description ?? '');
+    setOriginalDesc(bucket.description ?? '');
     setSaveState('idle');
     setSaveError('');
     setConfirmingDelete(false);
+    setConfirmingReclassify(false);
     setExemplars([]);
+    setExpandedExemplarIds(new Set());
     setExemplarsLoading(true);
     try {
       const res = await fetch(`/api/buckets/${bucket.id}/exemplars`);
@@ -80,6 +89,16 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
     setSaveState('idle');
     setSaveError('');
     setConfirmingDelete(false);
+    setConfirmingReclassify(false);
+  }
+
+  function handleSaveClick(bucketId: number) {
+    // Description changed → gate behind "Confirm & Reclassify"
+    if (editDesc.trim() !== originalDesc.trim()) {
+      setConfirmingReclassify(true);
+    } else {
+      void saveEdit(bucketId);
+    }
   }
 
   async function saveEdit(bucketId: number) {
@@ -90,12 +109,16 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: editName, description: editDesc }),
     });
-    const data = await res.json() as { error?: string; name?: string; description?: string };
-    if (!res.ok) { setSaveState('error'); setSaveError(data.error ?? 'Save failed'); return; }
+    const data = await res.json() as { error?: string; needsReclassify?: boolean; name?: string; description?: string };
+    if (!res.ok) { setSaveState('error'); setSaveError(data.error ?? 'Save failed'); setConfirmingReclassify(false); return; }
     setBuckets((prev) => prev.map((b) => b.id === bucketId ? { ...b, name: editName, description: editDesc } : b));
     setSaveState('done');
     setTimeout(() => closeEdit(), 800);
-    onBucketsChanged();
+    if (data.needsReclassify) {
+      onBucketUpdated?.(bucketId);
+    } else {
+      onBucketsChanged();
+    }
   }
 
   async function submitBucket() {
@@ -120,13 +143,12 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
 
   async function deleteBucket(bucketId: number, bucketName: string) {
     const response = await fetch(`/api/buckets/${bucketId}`, { method: 'DELETE' });
-    const data = await response.json() as { displaced?: number; displacedThreadIds?: string[]; error?: string };
+    const data = await response.json() as { deleted?: boolean; error?: string };
     if (!response.ok) { showToast(data.error ?? 'Delete failed'); return; }
     setBuckets((prev) => prev.filter((b) => b.id !== bucketId));
     closeEdit();
-    const count = data.displaced ?? 0;
-    showToast(`"${bucketName}" deleted. ${count} email${count !== 1 ? 's' : ''} will be reclassified.`);
-    onBucketDeleted(bucketId, bucketName, data.displacedThreadIds ?? []);
+    showToast(`"${bucketName}" deleted.`);
+    onBucketDeleted(bucketId, bucketName);
   }
 
   return (
@@ -138,12 +160,12 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
             className="fixed right-0 top-0 bottom-0 z-50 flex flex-col"
-            style={{ width: 400, background: 'var(--bg-elevated)', boxShadow: 'var(--shadow-md)', borderLeft: '1px solid var(--border-default)' }}
+            style={{ width: 400, background: 'var(--bg-elevated)', boxShadow: '0 4px 24px rgba(59,50,38,0.12)', borderLeft: '1px solid rgba(221,210,192,0.4)' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-default)' }}>
               <span className="heading-sm" style={{ color: 'var(--text-primary)' }}>Manage Buckets</span>
-              <button className="btn-ghost btn-sm" onClick={onClose} style={{ fontSize: 18, lineHeight: 1 }}>×</button>
+              <button className="btn-ghost btn-sm rounded-full" onClick={onClose} style={{ fontSize: 18, lineHeight: 1, width: 28, height: 28, padding: 0 }}>×</button>
             </div>
 
             {/* New bucket form — top section */}
@@ -209,42 +231,67 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
                           <p className="body-sm mb-2" style={{ color: 'var(--text-tertiary)' }}>Loading exemplars…</p>
                         )}
                         {!exemplarsLoading && exemplars.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {exemplars.map((ex) => (
-                              <span
-                                key={ex.id}
-                                className="px-2 py-0.5 rounded-full"
-                                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 11, border: '1px solid var(--border-default)' }}
-                              >
-                                {ex.text}
-                              </span>
-                            ))}
+                          <div className="flex flex-col gap-1 mb-2">
+                            {exemplars.map((ex) => {
+                              const isExpanded = expandedExemplarIds.has(ex.id);
+                              return (
+                                <button
+                                  key={ex.id}
+                                  type="button"
+                                  onClick={() => setExpandedExemplarIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(ex.id)) next.delete(ex.id); else next.add(ex.id);
+                                    return next;
+                                  })}
+                                  className="w-full text-left px-2 py-1 rounded cursor-pointer"
+                                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 11, border: '1px solid var(--border-default)', transition: 'background 150ms ease' }}
+                                >
+                                  <span style={isExpanded ? {} : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }}>
+                                    {ex.text}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                         {saveError && <p className="body-sm mb-2" style={{ color: 'var(--color-error)' }}>{saveError}</p>}
                         <div className="flex items-center gap-2 mt-1">
-                          <button
-                            className="btn-primary btn-sm flex-1"
-                            onClick={() => saveEdit(bucket.id)}
-                            disabled={saveState === 'saving' || !editName.trim() || !editDesc.trim()}
-                          >
-                            {saveState === 'saving' ? 'Saving…' : saveState === 'done' ? '✓ Saved' : 'Save'}
-                          </button>
-                          <button className="btn-ghost btn-sm" onClick={closeEdit}>Cancel</button>
+                          {confirmingReclassify ? (
+                            <>
+                              <button
+                                className="btn-primary btn-sm flex-1"
+                                onClick={() => saveEdit(bucket.id)}
+                                disabled={saveState === 'saving'}
+                              >
+                                {saveState === 'saving' ? 'Saving…' : saveState === 'done' ? '✓ Saved' : 'Confirm & Reclassify'}
+                              </button>
+                              <button className="btn-ghost btn-sm" onClick={() => setConfirmingReclassify(false)}>Cancel</button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="btn-primary btn-sm flex-1"
+                                onClick={() => handleSaveClick(bucket.id)}
+                                disabled={saveState === 'saving' || !editName.trim() || !editDesc.trim()}
+                              >
+                                {saveState === 'saving' ? 'Saving…' : saveState === 'done' ? '✓ Saved' : 'Save'}
+                              </button>
+                              <button className="btn-ghost btn-sm" onClick={closeEdit}>Cancel</button>
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 mt-2">
                           {confirmingDelete ? (
                             <>
                               <button
-                                className="btn-ghost btn-sm"
-                                style={{ color: 'var(--color-error)', fontWeight: 600 }}
+                                className="btn-ghost btn-sm flex-1"
+                                style={{ color: 'var(--color-error)', fontWeight: 600, border: '1px solid var(--color-error)' }}
                                 onClick={() => deleteBucket(bucket.id, bucket.name)}
                               >
-                                Are you sure? Click to confirm
+                                Yes, delete
                               </button>
                               <button
                                 className="btn-ghost btn-sm"
-                                style={{ color: 'var(--text-tertiary)' }}
                                 onClick={() => setConfirmingDelete(false)}
                               >
                                 Cancel
@@ -267,9 +314,8 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: bucket.color }} />
                           <span className="body-sm truncate" style={{ color: 'var(--text-primary)' }}>{bucket.name}</span>
-                          {bucket.isDefault && <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>🔒</span>}
                         </div>
-                        {!bucket.isDefault && !isDemo && (
+                        {!DEFAULT_BUCKET_NAMES.has(bucket.name) && !isDemo && (
                           <button
                             className="btn-ghost btn-sm flex-shrink-0"
                             style={{ color: 'var(--text-tertiary)', padding: '2px 6px', fontSize: 14 }}

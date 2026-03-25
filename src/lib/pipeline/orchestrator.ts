@@ -1,4 +1,4 @@
-import { eq, inArray, count, sum } from 'drizzle-orm';
+import { and, eq, inArray, or, isNull, count, sum } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { classifications, buckets, categoryExemplars, aiUsage } from '@/lib/db/schema';
 import { syncGmailThreads } from '@/lib/gmail/sync';
@@ -73,11 +73,32 @@ async function computeMetrics(userId: number, startTime: number): Promise<Pipeli
   };
 }
 
+const DEFAULT_BUCKET_NAMES = ['Direct', 'Updates', 'Newsletters', 'Promotions', 'Auto-Archive'];
+
 async function resetForFullMode(userId: number): Promise<void> {
+  // Only reset emails in default buckets (or unclassified). Custom bucket assignments survive.
+  const defaultBucketRows = await db
+    .select({ id: buckets.id })
+    .from(buckets)
+    .where(and(eq(buckets.userId, userId), inArray(buckets.name, DEFAULT_BUCKET_NAMES)));
+
+  const defaultBucketIds = defaultBucketRows.map((b) => b.id);
+
+  // Guard: if no default buckets found, don't wipe everything
+  if (defaultBucketIds.length === 0) return;
+
   await db.update(classifications).set({
     bucketId: null, classificationTier: null, confidence: null,
     llmReasoning: null, urgencyScore: null, securityFlags: [],
-  }).where(eq(classifications.userId, userId));
+  }).where(
+    and(
+      eq(classifications.userId, userId),
+      or(
+        isNull(classifications.bucketId),
+        inArray(classifications.bucketId, defaultBucketIds),
+      ),
+    ),
+  );
 }
 
 export async function runPipeline(

@@ -376,6 +376,113 @@ src/
     reseed-exemplars.ts
 ```
 
+### Post-Step 12 Patch Set A: Performance + Custom Bucket Polish (branch: feature/bucket-embedding-fast-reclassify → feature/custom-bucket-preserve)
+
+**Motivation:** Reclassification after bucket create/edit was slow (~minutes) because it used in-memory cosine over per-email exemplar lookups. Accuracy was also off — false positives (wrong emails moving) and false negatives (custom bucket emails being zeroed on full pipeline run).
+
+#### pgvector Reclassification Rewrite
+- `src/lib/db/schema/buckets.ts` — added `embedding: vector('embedding', { dimensions: 384 })` nullable column
+- `drizzle/0003_broad_spot.sql` — migration; applied
+- `src/app/api/buckets/route.ts` (POST) — embeds `"name: description"` immediately after bucket insert; wrapped in try/catch (non-blocking)
+- `src/app/api/buckets/[id]/reclassify/route.ts` — decoupled Claude enrichment from reclassification critical path: SSE now emits `bucket_enriching` → `runReclassification` (fast, ~200ms) → `reclassify_complete` → enrichment runs after (non-blocking to client)
+- `src/lib/pipeline/reclassify.ts` — full rewrite:
+  - `runReclassification`: single pgvector SQL (`<=>`) finds all emails closer to new bucket than current; tier2 `< 0.25` (direct write), tier3 `0.25–0.35` (LLM), `>= 0.35` skipped
+  - `runReclassifyDisplaced`: `DISTINCT ON (c.thread_id)` SQL for best-bucket-per-displaced-email; only writes `distance < 0.25`; rows `>= 0.25` stay `bucketId=null` for full pipeline; tier3 LLM path removed entirely
+- `src/scripts/embed-existing-buckets.ts` — one-time script to backfill embeddings for existing buckets; ran successfully (10 buckets)
+
+#### Custom Bucket Preservation in Full Pipeline
+- `src/lib/pipeline/orchestrator.ts` — `resetForFullMode` now scoped to default bucket IDs only (Direct/Updates/Newsletters/Promotions/Auto-Archive); custom bucket assignments survive full pipeline runs
+
+#### UI Polish
+- `src/app/globals.css` — `@utility btn-primary`, `btn-ghost`, `btn-sm`, `btn-md` with hover states + `cursor-pointer`; `@utility scrollbar-none`
+- `src/components/inbox/bucket-tabs.tsx` — ClassifyButton + ManageBucketsButton in shared header row; scrollbar-none on tab row
+- `src/components/inbox/manage-buckets-panel.tsx` — softer panel border/shadow; `DEFAULT_BUCKET_NAMES` set for read-only default buckets; exemplar expand/collapse toggle
+
+#### Edit + Delete UX
+- `src/app/api/buckets/[id]/route.ts` (PATCH) — detects `descriptionChanged`; if changed: clears `enrichedDescription`/`boundaryNotes`, re-embeds bucket, returns `{ ...updated, needsReclassify: true }`; (DELETE) — simplified: nulls displaced emails' classification fields, returns `{ deleted: true }` (no `displacedThreadIds`)
+- `src/components/inbox/manage-buckets-panel.tsx` — `Confirm & Reclassify` gate when description changes (replaces Save/Cancel); "Yes, delete" / "Cancel" styled buttons replacing text link; `onBucketDeleted` simplified to `(bucketId, bucketName)` (no `displacedThreadIds`)
+- `src/components/inbox/bucket-tabs.tsx` — `handleBucketUpdated` triggers `startCreationSSE` for description-change reclassification; `handleBucketDeleted` immediately switches to Direct tab; `handleBucketCreated` immediately switches to new bucket tab; `startDisplacedSSE` removed entirely; after delete, triggers full classify pipeline via `classifyButtonRef`
+- `src/components/inbox/classify-button.tsx` — `forwardRef` + `useImperativeHandle` exposing `ClassifyButtonHandle { startClassify }` so BucketTabs can trigger full classify after bucket deletion; always-visible button with 3s auto-reset to idle after complete
+- `src/app/api/buckets/reclassify-displaced/route.ts` — gutted (returns 410 Gone; no longer called)
+
+**DB migration:** `drizzle/0003_broad_spot.sql` — adds `embedding vector(384)` to `buckets` table. Run `pnpm db:migrate`.
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      buckets/[id]/exemplars/route.ts
+      buckets/[id]/reclassify/route.ts
+      buckets/[id]/route.ts
+      buckets/reclassify-displaced/route.ts  ← gutted (410)
+      buckets/route.ts
+      classify/route.ts
+      embed/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    page.tsx
+  components/
+    inbox/bucket-tabs.tsx
+    inbox/classify-button.tsx
+    inbox/email-list.tsx
+    inbox/email-row.tsx
+    inbox/empty-state.tsx
+    inbox/manage-buckets-button.tsx
+    inbox/manage-buckets-panel.tsx
+    ui/button.tsx
+  fixtures/demo-threads.json
+  lib/
+    buckets/enrich-bucket.ts
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/reclassify.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+  scripts/
+    embed-existing-buckets.ts
+    rename-buckets.ts
+    reseed-direct.ts
+    reseed-exemplars.ts
+```
+
 ## Known Issues
 (none)
 
