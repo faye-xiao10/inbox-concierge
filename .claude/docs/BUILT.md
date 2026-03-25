@@ -531,6 +531,111 @@ src/
 
 **To backfill Good Reads:** open Manage Buckets, edit description, save — PATCH clears `enrichedDescription`, reclassify SSE fires, enrichment now runs inside stream before close.
 
+### Step 13: D3 Cluster Visualization (branch: feature/step-13-d3-graph)
+
+**New files:**
+- `src/app/api/graph-data/route.ts` — GET, session-gated; returns `EmailNode[]` JSON
+- `src/lib/inbox/get-graph-data.ts` — `getGraphData(userId)`: inner-joins classifications + buckets, filters to rows where `umapX/umapY/bucketId` are non-null, null-safe fallbacks on all fields
+- `src/components/graph/graph-utils.ts` — pure TS helpers: `urgencyToRadius` (6–20px), `recencyToOpacity` (today=1.0, 7d+=0.3 linear), `tierToStroke`/`tierToStrokeWidth` (tier 2=yellow, tier 3=red), `computeClusterCentroids`, `computeFitTransform` (bbox → scale+translate for fit-to-view)
+- `src/components/graph/email-graph.tsx` — D3 force graph (195 lines): UMAP normalization to [30%,70%] canvas range, custom cluster force (strength 0.15×alpha×confidence), collision + center + charge (-8) forces, alphaDecay 0.03; security badge overlays; cluster labels (paint-order stroke halo) appended after nodes; animated fit-to-view on simulation end (900ms easeCubicOut); zoom 0.5–6x; 80ms mouseout grace period for tooltip flicker prevention
+- `src/components/graph/graph-tooltip.tsx` — portal tooltip (createPortal → document.body, fixed positioning); always in DOM with opacity transition (180ms); right-edge and top-edge viewport flip; three-zone layout (header/snippet/meta) using CSS variables from STYLE.md; timestamp via `formatTimestamp`
+- `src/components/graph/graph-view.tsx` — fetches `/api/graph-data` on mount; ResizeObserver for responsive dimensions (`height = max(520, innerHeight - 160)`); loading spinner; empty state when no UMAP coords; border + shadow container; instructions line below
+
+**Modified files:**
+- `src/components/inbox/bucket-tabs.tsx` — list/graph toggle in header (SVG icons, `var(--bg-tertiary)` active state); `view === 'graph'` renders `<GraphView />` replacing tab+list content
+
+**Key decisions:**
+- Graph background uses `var(--bg-primary)` (cream) — consistent with inbox
+- Tooltip background uses `var(--bg-elevated)` with `var(--border-default)` border — fully style-system aligned
+- Tooltip text colors, tier badges, urgency dots all reference STYLE.md CSS variables
+- `computeFitTransform` extracted to graph-utils to keep email-graph.tsx under 200 lines
+- Portal tooltip escapes `overflow:hidden` container — no clipping at graph edges
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      buckets/[id]/exemplars/route.ts
+      buckets/[id]/reclassify/route.ts
+      buckets/[id]/route.ts
+      buckets/reclassify-displaced/route.ts  ← gutted (410)
+      buckets/route.ts
+      classify/route.ts
+      embed/route.ts
+      graph-data/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    page.tsx
+  components/
+    graph/
+      email-graph.tsx
+      graph-tooltip.tsx
+      graph-utils.ts
+      graph-view.tsx
+    inbox/
+      bucket-tabs.tsx
+      classify-button.tsx
+      email-list.tsx
+      email-row.tsx
+      empty-state.tsx
+      manage-buckets-button.tsx
+      manage-buckets-panel.tsx
+    ui/button.tsx
+  fixtures/demo-threads.json
+  lib/
+    buckets/enrich-bucket.ts
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-graph-data.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/reclassify.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+  scripts/
+    check-exemplars.ts
+    embed-existing-buckets.ts
+    rename-buckets.ts
+    reseed-direct.ts
+    reseed-exemplars.ts
+```
+
 ## Known Issues
 (none)
 

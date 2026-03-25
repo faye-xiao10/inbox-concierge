@@ -7,6 +7,7 @@ import EmailList from './email-list';
 import ClassifyButton, { type ClassifyButtonHandle } from './classify-button';
 import ManageBucketsButton from './manage-buckets-button';
 import ManageBucketsPanel, { type PanelBucket } from './manage-buckets-panel';
+import GraphView from '@/components/graph/graph-view';
 
 interface BucketTabsProps {
   threads: InboxThread[];
@@ -43,6 +44,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
   const router = useRouter();
   const [buckets, setBuckets] = useState(initialBuckets);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'graph'>('list');
   const [creationStatus, setCreationStatus] = useState<CreationStatus | null>(null);
   const [creationDone, setCreationDone] = useState<CreationDone | null>(null);
   const [overlapWarning, setOverlapWarning] = useState<OverlapWarning | null>(null);
@@ -202,11 +204,53 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
       <div className="flex items-center justify-between mb-6">
         <h1 className="heading-xl" style={{ color: 'var(--text-primary)' }}>Inbox</h1>
         <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-0.5 rounded-md p-0.5"
+            style={{ border: '1px solid var(--border-default)' }}
+          >
+            <button
+              onClick={() => setView('list')}
+              title="List view"
+              className="rounded p-1.5 transition-colors duration-150"
+              style={{
+                background: view === 'list' ? 'var(--bg-tertiary)' : 'transparent',
+                color: view === 'list' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              }}
+            >
+              {/* List icon */}
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="3" y1="4" x2="11" y2="4" />
+                <line x1="3" y1="7" x2="11" y2="7" />
+                <line x1="3" y1="10" x2="11" y2="10" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setView('graph')}
+              title="Graph view"
+              className="rounded p-1.5 transition-colors duration-150"
+              style={{
+                background: view === 'graph' ? 'var(--bg-tertiary)' : 'transparent',
+                color: view === 'graph' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+              }}
+            >
+              {/* Scatter/cluster icon */}
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="4" cy="4" r="1.5" />
+                <circle cx="10" cy="3" r="1.5" />
+                <circle cx="3" cy="10" r="1.5" />
+                <circle cx="9" cy="10" r="1.5" />
+                <circle cx="7" cy="7" r="1.5" />
+              </svg>
+            </button>
+          </div>
           <ClassifyButton ref={classifyButtonRef} isDemo={isDemo} />
           <ManageBucketsButton onClick={() => setIsPanelOpen(true)} />
         </div>
       </div>
 
+      {view === 'graph' && <GraphView />}
+
+      {view === 'list' && (<>
       <div className="flex items-center mb-1">
         <div
           className="flex gap-1 overflow-x-auto scrollbar-hide flex-1"
@@ -311,6 +355,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
         bucketName={activeId === UNCATEGORIZED_ID ? 'Uncategorized' : (activeBucket?.name ?? 'this bucket')}
         isDemo={isDemo}
       />
+      </>)}
 
       <ManageBucketsPanel
         isOpen={isPanelOpen}
