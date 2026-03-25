@@ -20,6 +20,7 @@
     "@anthropic-ai/sdk": "^0.80.0",
     "@google/generative-ai": "^0.24.1",
     "@neondatabase/serverless": "^1.0.2",
+    "@vercel/functions": "^3.4.3",
     "d3": "^7.9.0",
     "drizzle-orm": "^0.45.1",
     "framer-motion": "^12.38.0",

@@ -34,7 +34,6 @@ export async function runReclassification(
   newBucketId: number,
   onEvent: (event: PipelineEvent) => void,
 ): Promise<void> {
-  // Fetch the new bucket's embedding (set by POST handler before SSE starts)
   const [bucketRow] = await db
     .select({ embedding: buckets.embedding })
     .from(buckets)
@@ -44,8 +43,8 @@ export async function runReclassification(
 
   const vectorStr = `[${bucketRow.embedding.join(',')}]`;
 
-  // ── INGEST PASS: emails outside this bucket that should move in ───────────────
-  // Single SQL query: find all emails closer to the new bucket than their current bucket
+  // ── INGEST PASS ───────────────────────────────────────────────────────────────
+  // Absolute distance threshold — works even when the current bucket has no embedding.
   const result = await db.execute(sql`
     SELECT
       c.id,
@@ -58,12 +57,11 @@ export async function runReclassification(
       c.bucket_id       AS "bucketId",
       (c.embedding <=> ${vectorStr}::vector) AS "newDist"
     FROM ${classifications} c
-    JOIN ${buckets} cb ON cb.id = c.bucket_id
     WHERE c.user_id = ${userId}
-      AND c.embedding IS NOT NULL
-      AND cb.embedding IS NOT NULL
       AND c.bucket_id != ${newBucketId}
-      AND (c.embedding <=> ${vectorStr}::vector) < (c.embedding <=> cb.embedding)
+      AND c.embedding IS NOT NULL
+      AND (c.embedding <=> ${vectorStr}::vector) < 0.35
+    ORDER BY (c.embedding <=> ${vectorStr}::vector) ASC
   `);
 
   const rows = (result.rows as CandidateRow[]).map((r) => ({
@@ -73,16 +71,16 @@ export async function runReclassification(
     securityFlags: Array.isArray(r.securityFlags) ? r.securityFlags : [],
   }));
 
-  // Split by distance: < 0.25 → tier 2 direct, 0.25–0.35 → tier 3 LLM, >= 0.35 skip
-  const tier2Rows = rows.filter((r) => r.newDist < 0.25);
-  const tier3Rows = rows.filter((r) => r.newDist >= 0.25 && r.newDist < 0.35);
+  // dist < 0.22 → tier 2 direct write; 0.22–0.35 → tier 3 LLM; >= 0.35 skip
+  const tier2Rows = rows.filter((r) => r.newDist < 0.22);
+  const tier3Rows = rows.filter((r) => r.newDist >= 0.22 && r.newDist < 0.35);
 
-  console.log(`[reclassify] ingest candidates: tier2=${tier2Rows.length} tier3=${tier3Rows.length} skipped=${rows.length - tier2Rows.length - tier3Rows.length}`);
+  console.log(`[reclassify] ingest candidates: tier2=${tier2Rows.length} tier3=${tier3Rows.length}`);
 
   let movedCount = 0;
 
-  // Tier 2: batch writes
-  const writeOps = tier2Rows.map((r) => {
+  // Tier 2: write directly and emit immediately so results appear in the tab right away.
+  const tier2Ops = tier2Rows.map((r) => {
     const confidence = 1 - r.newDist;
     onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: newBucketId, tier: 2, confidence });
     movedCount++;
@@ -90,12 +88,13 @@ export async function runReclassification(
       .set({ bucketId: newBucketId, classificationTier: 2, confidence })
       .where(eq(classifications.id, r.id));
   });
-  await Promise.allSettled(writeOps);
+  await Promise.allSettled(tier2Ops);
 
-  // Signal ingest progress so banner transitions from "Setting up" to live counters
+  // Signal tier2 complete so the UI can transition banner state.
   onEvent({ type: 'reclassify_progress', checked: tier2Rows.length + tier3Rows.length, moved: movedCount });
 
-  // Tier 3: parallel LLM batches
+  // Tier 3: LLM batches run in parallel; emit classification_result per confirmed email as
+  // each batch resolves so they trickle into the tab incrementally.
   let tier3Count = 0;
   if (tier3Rows.length > 0) {
     const bucketRows = await db
@@ -111,41 +110,37 @@ export async function runReclassification(
 
     const batches = chunk(tier3Rows, 12);
 
-    // Fire all LLM batches in parallel — bounded by slowest single batch, not sum
-    const batchPromises = batches.map(async (batch, i) => {
-      const batchItems: EmailBatchItem[] = batch.map((c) => ({
-        threadId: c.threadId, subject: c.subject, senderName: c.senderName,
-        senderEmail: c.senderEmail, snippet: c.snippet, securityFlags: c.securityFlags,
-      }));
-      const results = await classifyBatchWithFallback(batchItems, bucketContexts, userId, reclassifyContext);
-      onEvent({ type: 'tier3_progress', current: (i + 1) * batch.length, total: tier3Rows.length, batchNumber: i + 1 });
-      return { batch, results };
-    });
+    // Fire all LLM batches in parallel — each resolves independently and emits results immediately.
+    await Promise.all(
+      batches.map(async (batch) => {
+        const batchItems: EmailBatchItem[] = batch.map((c) => ({
+          threadId: c.threadId, subject: c.subject, senderName: c.senderName,
+          senderEmail: c.senderEmail, snippet: c.snippet, securityFlags: c.securityFlags,
+        }));
+        const results = await classifyBatchWithFallback(batchItems, bucketContexts, userId, reclassifyContext);
 
-    const batchResults = await Promise.all(batchPromises);
-
-    for (const { batch, results } of batchResults) {
-      await Promise.allSettled(
-        results
-          .filter((r) => r.bucketId === newBucketId)
-          .map((r) => {
-            const candidate = batch.find((c) => c.threadId === r.threadId);
-            if (!candidate) return Promise.resolve();
-            movedCount++;
-            tier3Count++;
-            onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: newBucketId, tier: 3, confidence: r.confidence });
-            return db.update(classifications)
-              .set({ bucketId: newBucketId, classificationTier: 3, confidence: r.confidence, llmReasoning: r.reasoning })
-              .where(eq(classifications.id, candidate.id));
-          }),
-      );
-    }
+        // Emit and write confirmed results immediately as this batch resolves.
+        await Promise.allSettled(
+          results
+            .filter((r) => r.bucketId === newBucketId)
+            .map((r) => {
+              const candidate = batch.find((c) => c.threadId === r.threadId);
+              if (!candidate) return Promise.resolve();
+              movedCount++;
+              tier3Count++;
+              onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: newBucketId, tier: 3, confidence: r.confidence });
+              return db.update(classifications)
+                .set({ bucketId: newBucketId, classificationTier: 3, confidence: r.confidence, llmReasoning: r.reasoning })
+                .where(eq(classifications.id, candidate.id));
+            }),
+        );
+      }),
+    );
   }
 
-  // ── EVICTION PASS: emails inside this bucket that no longer match its exemplars ─
-  // Emails were originally assigned by exemplar similarity (Tier 2), so eviction
-  // checks exemplar similarity too — not raw bucket embedding distance.
-  // CTE: find emails where best exemplar dist > 0.40, then find their best alt bucket.
+  // ── EVICTION PASS ─────────────────────────────────────────────────────────────
+  // Find emails already in this bucket whose exemplar distance exceeds 0.40, then
+  // reassign to their best alternative or set to uncategorized.
   const evictionResult = await db.execute(sql`
     WITH evicted AS (
       SELECT c.id, c.thread_id
@@ -263,14 +258,10 @@ export async function runReclassifyDisplaced(
     }));
 
   const toReassign = rows.filter((r) => r.distance < 0.25);
-  const leftUncategorized = rows.filter((r) => r.distance >= 0.25);
 
-  console.log(`[reclassify-displaced] confident=${toReassign.length} leaving-uncategorized=${leftUncategorized.length}`);
+  console.log(`[reclassify-displaced] confident=${toReassign.length} leaving-uncategorized=${rows.length - toReassign.length}`);
 
   let movedCount = 0;
-
-  // Only write confident reassignments — low-confidence rows stay bucketId=null
-  // for the full pipeline's multi-exemplar Tier 2 to handle correctly.
   const writeOps = toReassign.map((r) => {
     const confidence = 1 - r.distance;
     onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: r.bestBucketId, tier: 2, confidence });

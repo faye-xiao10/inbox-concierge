@@ -2,20 +2,11 @@ import { getSession } from '@/lib/session';
 import { getValidAccessToken } from '@/lib/google/auth';
 import { runPipeline, type PipelineEvent, type PipelineMode } from '@/lib/pipeline/orchestrator';
 
-// Rate limiting for sync stage only: userId → last sync timestamp
-const lastSyncTime = new Map<number, number>();
-const SYNC_RATE_LIMIT_MS = 60_000;
-
 export async function POST(request: Request): Promise<Response> {
   const session = await getSession(request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
-
-  const now = Date.now();
-  const lastSync = lastSyncTime.get(session.userId) ?? 0;
-  const skipSync = now - lastSync < SYNC_RATE_LIMIT_MS;
-  if (!skipSync) lastSyncTime.set(session.userId, now);
 
   let accessToken = '';
   if (!session.isDemo) {
@@ -42,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
           accessToken,
           session.isDemo,
           mode,
-          skipSync,
+          false,
           emit,
           request.signal,
         );

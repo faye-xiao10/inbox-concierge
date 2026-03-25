@@ -39,7 +39,7 @@ export type PipelineEvent =
   | { type: 'classification_result'; threadId: string; bucketId: number; tier: number; confidence: number }
   | { type: 'triage_complete' }
   | { type: 'pipeline_complete'; metrics: PipelineMetrics }
-  | { type: 'reclassify_complete'; movedCount: number; tier3Count: number }
+  | { type: 'reclassify_complete'; movedCount: number; tier3Count: number; hasMore?: boolean }
   | { type: 'eviction_complete'; evictedCount: number; reassignedCount: number }
   | { type: 'reclassify_progress'; checked: number; moved: number }
   | { type: 'bucket_enriching'; message: string }

@@ -6,6 +6,40 @@ import { enrichBucket } from '@/lib/buckets/enrich-bucket';
 import { runReclassification } from '@/lib/pipeline/reclassify';
 import type { PipelineEvent } from '@/lib/pipeline/orchestrator';
 
+async function enrichAndSave(
+  bucketId: number,
+  userId: number,
+  bucketName: string,
+  bucketDescription: string,
+  force: boolean,
+): Promise<void> {
+  console.log(`[enrichAndSave] starting for bucketId=${bucketId}`);
+  try {
+    const enrichResult = await enrichBucket(bucketName, bucketDescription, userId, force);
+
+    console.log(`[enrichAndSave] Saving enrichment: ${enrichResult.exemplarVectors.length} exemplars`);
+    await db.update(buckets)
+      .set({ enrichedDescription: enrichResult.enrichedDescription, boundaryNotes: enrichResult.boundaryNotes })
+      .where(eq(buckets.id, bucketId));
+    await db.delete(categoryExemplars).where(eq(categoryExemplars.bucketId, bucketId));
+    await Promise.allSettled(
+      enrichResult.exemplarVectors.map((embedding, i) =>
+        db.insert(categoryExemplars).values({
+          bucketId,
+          embedding,
+          text: enrichResult.exemplarTexts[i] ?? null,
+          source: 'synthetic',
+          weight: 0.5,
+          sourceThreadId: null,
+        }),
+      ),
+    );
+    console.log(`[enrichAndSave] complete for bucketId=${bucketId} overlapping=${enrichResult.overlapping}`);
+  } catch (err) {
+    console.error(`[enrichAndSave] failed for bucketId=${bucketId}:`, err);
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -32,9 +66,9 @@ export async function POST(
     .from(categoryExemplars)
     .where(eq(categoryExemplars.bucketId, bucketId));
 
-  // Re-enrich whenever exemplars are missing, even if enrichedDescription was previously set.
-  // Handles the case where enrichment partially succeeded (description saved, exemplars not).
   const needsEnrichment = !bucket.enrichedDescription || Number(exemplarCount) === 0;
+
+  console.log(`[reclassify] bucketId=${bucketId} needsEnrichment=${needsEnrichment} force=${force}`);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -46,45 +80,19 @@ export async function POST(
       try {
         emit({ type: 'bucket_enriching', message: 'Setting up bucket...' });
 
-        // Run reclassification and enrichment in parallel — both must finish before close.
-        // Vercel kills the function as soon as the stream closes, so enrichment must complete here.
-        const [, enrichResult] = await Promise.all([
+        // Reclassification and enrichment run in parallel.
+        // Enrichment does not emit events — it saves silently alongside the reclassify stream.
+        await Promise.all([
           runReclassification(session.userId, bucketId, emit),
           needsEnrichment
-            ? enrichBucket(bucket.name, bucket.description ?? '', session.userId, force).catch((err: unknown) => {
-                console.error('[reclassify] Enrichment failed (non-fatal):', err);
-                return null;
-              })
-            : Promise.resolve(null),
+            ? enrichAndSave(bucketId, session.userId, bucket.name, bucket.description ?? '', force)
+            : Promise.resolve(),
         ]);
 
-        // Persist enrichment results (exemplars + metadata) before closing.
-        if (enrichResult && !enrichResult.overlapping) {
-          await db.update(buckets)
-            .set({ enrichedDescription: enrichResult.enrichedDescription, boundaryNotes: enrichResult.boundaryNotes })
-            .where(eq(buckets.id, bucketId));
-          // Clear stale exemplars before writing fresh ones to avoid duplicates on re-enrich.
-          await db.delete(categoryExemplars).where(eq(categoryExemplars.bucketId, bucketId));
-          await Promise.allSettled(
-            enrichResult.exemplarVectors.map((embedding, i) =>
-              db.insert(categoryExemplars).values({
-                bucketId,
-                embedding,
-                text: enrichResult.exemplarTexts[i] ?? null,
-                source: 'synthetic',
-                weight: 0.5,
-                sourceThreadId: null,
-              }),
-            ),
-          );
-        } else if (enrichResult?.overlapping) {
-          emit({ type: 'overlap_warning', conflictingBucketName: enrichResult.conflictingBucketName, similarity: Math.round(enrichResult.similarity * 100) });
-        }
         controller.close();
       } catch (error) {
         emit({ type: 'error', message: String(error), stage: 'reclassify' });
         controller.close();
-        return;
       }
     },
   });

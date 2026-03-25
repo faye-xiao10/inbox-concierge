@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { InboxThread } from '@/lib/inbox/get-inbox-threads';
 import EmailList from './email-list';
@@ -13,14 +13,17 @@ interface BucketTabsProps {
   threads: InboxThread[];
   buckets: { id: number; name: string; color: string; sortOrder: number; isDefault: boolean; description: string | null }[];
   isDemo: boolean;
+  autoClassify?: boolean;
 }
 
 interface CreationStatus {
+  bucketId: number;
   bucketName: string;
   phase: string;
   checked: number;
   moved: number;
   isEdit: boolean;
+  hasFirstResult: boolean; // true after the first classification_result arrives
   label?: string; // overrides default "Creating..." display text
 }
 
@@ -40,19 +43,42 @@ interface OverlapWarning {
 
 const UNCATEGORIZED_ID = -1;
 
-export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }: BucketTabsProps) {
+export default function BucketTabs({ threads, buckets: initialBuckets, isDemo, autoClassify }: BucketTabsProps) {
   const router = useRouter();
   const [buckets, setBuckets] = useState(initialBuckets);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [view, setView] = useState<'list' | 'graph'>('list');
+  const [isClassifyRunning, setIsClassifyRunning] = useState(false);
   const [creationStatus, setCreationStatus] = useState<CreationStatus | null>(null);
   const [creationDone, setCreationDone] = useState<CreationDone | null>(null);
   const [overlapWarning, setOverlapWarning] = useState<OverlapWarning | null>(null);
+  // Maps threadId → new bucketId for emails reclassified during an active creation/update.
+  // Lets results appear in the tab immediately without waiting for router.refresh().
+  const [localBucketOverrides, setLocalBucketOverrides] = useState<Map<string, number>>(new Map());
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const classifyButtonRef = useRef<ClassifyButtonHandle>(null);
 
+  // useEffect(() => {
+  //   if (!autoClassify) return;
+  //   const t = setTimeout(() => classifyButtonRef.current?.startClassify(), 500);
+  //   return () => clearTimeout(t);
+  // }, [autoClassify]);
+
+  useEffect(() => {
+    if (!autoClassify) return;
+    console.log('[autoClassify] fired, ref:', classifyButtonRef.current);
+    const t = setTimeout(() => {
+      console.log('[autoClassify] 500ms elapsed, ref:', classifyButtonRef.current);
+      classifyButtonRef.current?.startClassify();
+    }, 500);
+    return () => clearTimeout(t);
+  }, [autoClassify]);
+
+  const effectiveBucketId = (t: { threadId: string; bucketId: number | null }) =>
+    localBucketOverrides.has(t.threadId) ? localBucketOverrides.get(t.threadId)! : t.bucketId;
+
   const countFor = (bucketId: number | null) =>
-    threads.filter((t) => (bucketId === UNCATEGORIZED_ID ? t.bucketId === null : t.bucketId === bucketId)).length;
+    threads.filter((t) => (bucketId === UNCATEGORIZED_ID ? effectiveBucketId(t) === null : effectiveBucketId(t) === bucketId)).length;
 
   const firstBucketWithEmails = buckets.find((b) => countFor(b.id) > 0);
   const [activeId, setActiveId] = useState<number>(
@@ -60,7 +86,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
   );
 
   const filteredThreads = threads.filter((t) =>
-    activeId === UNCATEGORIZED_ID ? t.bucketId === null : t.bucketId === activeId,
+    activeId === UNCATEGORIZED_ID ? effectiveBucketId(t) === null : effectiveBucketId(t) === activeId,
   );
 
   const activeBucket = buckets.find((b) => b.id === activeId);
@@ -103,8 +129,9 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
   }
 
   async function startCreationSSE(bucketId: number, bucketName: string, isEdit: boolean, force = false) {
-    setCreationStatus({ bucketName, phase: 'Setting up bucket...', checked: 0, moved: 0, isEdit });
+    setCreationStatus({ bucketId, bucketName, phase: 'Setting up bucket...', checked: 0, moved: 0, isEdit, hasFirstResult: false });
     setCreationDone(null);
+    setLocalBucketOverrides(new Map());
 
     try {
       const res = await fetch(`/api/buckets/${bucketId}/reclassify`, {
@@ -158,11 +185,15 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
           prev ? { ...prev, phase: 'Checking emails...', checked: (event.current as number) ?? prev.checked } : null,
         );
         break;
-      case 'classification_result':
-        if ((event.tier as number) === 3) {
-          setCreationStatus((prev) => prev ? { ...prev, moved: prev.moved + 1 } : null);
-        }
+      case 'classification_result': {
+        const threadId = event.threadId as string;
+        const classifiedBucketId = event.bucketId as number;
+        setLocalBucketOverrides((prev) => new Map([...prev, [threadId, classifiedBucketId]]));
+        setCreationStatus((prev) =>
+          prev ? { ...prev, moved: prev.moved + 1, hasFirstResult: true } : null,
+        );
         break;
+      }
       case 'eviction_complete': {
         const evicted = event.evictedCount as number;
         if (evicted > 0) {
@@ -185,6 +216,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
       case 'reclassify_complete': {
         const movedCount = (event.movedCount as number) ?? 0;
         setCreationStatus(null);
+        setLocalBucketOverrides(new Map()); // router.refresh() will load the authoritative data
         setCreationDone({ bucketName, movedCount });
         if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
         doneTimerRef.current = setTimeout(() => {
@@ -256,8 +288,8 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          <ClassifyButton ref={classifyButtonRef} isDemo={isDemo} />
-          <ManageBucketsButton onClick={() => setIsPanelOpen(true)} />
+          <ClassifyButton ref={classifyButtonRef} isDemo={isDemo} onRunningChange={setIsClassifyRunning} />
+          <ManageBucketsButton onClick={() => setIsPanelOpen(true)} isDisabled={isClassifyRunning} />
         </div>
       </div>
       
@@ -360,6 +392,32 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
           <button className="btn-ghost btn-sm" style={{ color: 'var(--text-tertiary)' }} onClick={() => setOverlapWarning(null)}>
             Cancel
           </button>
+        </div>
+      )}
+
+      {/* Inline reviewing notice — phase 2: first results shown, LLM still running */}
+      {creationStatus?.hasFirstResult && creationStatus.bucketId === activeId && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '6px 16px',
+            fontSize: 11,
+            color: 'var(--text-tertiary)',
+          }}
+        >
+          <span
+            className="animate-pulse"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: 'var(--accent-primary)',
+              flexShrink: 0,
+            }}
+          />
+          Showing best matches · AI is reviewing more…
         </div>
       )}
 

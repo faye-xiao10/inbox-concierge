@@ -374,6 +374,137 @@ src/
     reseed-exemplars.ts
 ```
 
+### Post-Step 14 Patch Set: Auto-Sync Fix + Job Alerts Debug + Quality Gate (branch: feature/bucket-create-quality-gate)
+
+#### Auto-Sync Fix + New User Onboarding
+- `src/app/api/classify/route.ts` — removed `lastSyncTime = new Map<number, number>()` and `SYNC_RATE_LIMIT_MS = 60_000`; inverted logic was skipping sync within 60s of last run; now always passes `false` (skipSync) to `runPipeline`
+- `src/app/inbox/page.tsx` — computes `autoClassify = !session.isDemo && threads.length === 0`; passes `autoClassify` prop to `BucketTabs`; new users with 0 emails auto-trigger classify on page load
+- `src/components/inbox/bucket-tabs.tsx` — added `autoClassify?: boolean` prop; `useEffect` with 500ms delay calls `classifyButtonRef.current?.startClassify()` when `autoClassify` is true
+
+#### Job Alerts Root Cause Fixes (absolute distance threshold)
+- `src/lib/pipeline/reclassify.ts` — full rewrite of ingest pass:
+  - Old query joined on `cb.embedding IS NOT NULL` — failed silently when default buckets had no embeddings
+  - New query: absolute distance threshold `< 0.35` on `classifications.embedding <=> bucket.embedding`; no join on current bucket, uses bucket-level vector directly
+  - Tier 2 (dist `< 0.22`): direct write, emits `classification_result` per email immediately
+  - Tier 3 (`0.22–0.35`): parallel LLM batches via `Promise.all`; emits `classification_result` per confirmed email as batches resolve (quality gate — LLM-rejected emails not written)
+  - Eviction pass unchanged (exemplar-based `> 0.40` threshold)
+- `src/scripts/embed-existing-buckets.ts` — ran to backfill embeddings for 5 default buckets (132–136) that had `embedding = NULL`
+
+#### Enrichment: Claude → Gemini + Flattened Interface
+- `src/lib/buckets/enrich-bucket.ts` — switched from Claude to Gemini 2.5 Flash with `FunctionCallingMode.ANY` for structured output; flattened `EnrichResult` from discriminated union to plain interface:
+  ```typescript
+  export interface EnrichResult {
+    enrichedDescription: string; boundaryNotes: string;
+    exemplarVectors: number[][]; exemplarTexts: string[];
+    overlapping: boolean; conflictingBucketName?: string; similarity?: number;
+  }
+  ```
+  Overlap is now a warning flag (`overlapping: boolean`) — exemplars always saved regardless; overlap threshold raised to `> 0.88`; step-level console.logs throughout
+- `src/app/api/buckets/[id]/reclassify/route.ts` — `enrichAndSave` extracted as standalone async function; stream runs `Promise.all([runReclassification(emit), needsEnrichment ? enrichAndSave(...) : Promise.resolve()])`; enrichment silent (no emit), everything completes before `controller.close()`
+
+#### Two-Pass Bucket Creation Quality Gate
+- `src/components/inbox/bucket-tabs.tsx`:
+  - Added `isClassifyRunning` state, wired via `onRunningChange` callback from ClassifyButton
+  - Added `localBucketOverrides: Map<string, number>` for live classification results (avoids premature `router.refresh()` during active SSE)
+  - `effectiveBucketId` helper used in both `countFor` and `filteredThreads`
+  - `CreationStatus` interface: added `bucketId: number` and `hasFirstResult: boolean` fields
+  - `classification_result` SSE handler: adds to `localBucketOverrides`, increments moved, sets `hasFirstResult = true`
+  - `reclassify_complete` handler: clears `localBucketOverrides`, simple done label
+  - Inline reviewing notice above `<EmailList>`: pulsing dot + "Showing best matches · AI is reviewing more…" — only visible while stream active and at least one result arrived
+- `src/lib/pipeline/orchestrator.ts` — `reclassify_complete` event updated: `{ type: 'reclassify_complete'; movedCount: number; tier3Count: number; hasMore?: boolean }`
+
+#### Manage Buckets Disable During Classify
+- `src/components/inbox/manage-buckets-button.tsx` — added `isDisabled?: boolean` prop; when disabled: `onClick={undefined}`, `title="Classification in progress…"`, `cursor: not-allowed`, `opacity: 0.5`
+- `src/components/inbox/classify-button.tsx` — added `onRunningChange?: (isRunning: boolean) => void` prop; calls `onRunningChange?.(true)` at start of `startClassify`; calls `onRunningChange?.(false)` on `pipeline_complete` and `error` events
+- `package.json` / `pnpm-lock.yaml` — added `@vercel/functions` (installed for `waitUntil` exploration, kept as dependency)
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      buckets/[id]/exemplars/route.ts
+      buckets/[id]/reclassify/route.ts
+      buckets/[id]/route.ts
+      buckets/reclassify-displaced/route.ts  ← gutted (410)
+      buckets/route.ts
+      classify/route.ts
+      embed/route.ts
+      graph-data/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    page.tsx
+  components/
+    graph/
+      email-graph.tsx
+      filter-panel.tsx
+      filter-types.ts
+      graph-tooltip.tsx
+      graph-utils.ts
+      graph-view.tsx
+    inbox/
+      bucket-tabs.tsx
+      classify-button.tsx
+      email-list.tsx
+      email-row.tsx
+      empty-state.tsx
+      manage-buckets-button.tsx
+      manage-buckets-panel.tsx
+    ui/button.tsx
+  fixtures/demo-threads.json
+  lib/
+    buckets/enrich-bucket.ts
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-graph-data.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/reclassify.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+  scripts/
+    check-exemplars.ts
+    embed-existing-buckets.ts
+    rename-buckets.ts
+    reseed-direct.ts
+    reseed-exemplars.ts
+```
+
 ## Known Issues
 (none)
 

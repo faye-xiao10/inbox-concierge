@@ -191,7 +191,7 @@ export default function FilterPanel({ filterState, onChange, onReset, buckets }:
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <LegendRow icon={<Dot color="var(--bg-tertiary)" border="var(--border-default)" />} label="No border — Auto-classified" />
-              <LegendRow icon={<Dot color="var(--bg-tertiary)" border="#8a775e" />} label="Espresso — AI Match" />
+              <LegendRow icon={<Dot color="var(--bg-tertiary)" border="#8a775e" />} label="Espresso — Semantic Similarity Match" />
               <LegendRow icon={<Dot color="var(--bg-tertiary)" border="#E53935" />} label="Red — LLM-reviewed" />
             </div>
 

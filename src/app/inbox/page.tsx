@@ -30,10 +30,12 @@ export default async function InboxPage() {
       .catch(() => []),
   ]);
 
+  const autoClassify = !session.isDemo && threads.length === 0;
+
   return (
     <main className="min-h-screen bg-primary">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <BucketTabs threads={threads} buckets={userBuckets} isDemo={session.isDemo} />
+        <BucketTabs threads={threads} buckets={userBuckets} isDemo={session.isDemo} autoClassify={autoClassify} />
       </div>
     </main>
   );

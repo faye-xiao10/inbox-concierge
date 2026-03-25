@@ -1,7 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { eq } from 'drizzle-orm';
+import { GoogleGenerativeAI, SchemaType, FunctionCallingMode, type FunctionDeclarationSchema } from '@google/generative-ai';
 import { db } from '@/lib/db';
-import { buckets, categoryExemplars } from '@/lib/db/schema';
+import { buckets, categoryExemplars, aiUsage } from '@/lib/db/schema';
 import { batchEmbed } from '@/lib/embed/gemini-embed';
 import { withRetry } from '@/lib/utils/retry';
 
@@ -23,9 +23,16 @@ function centroid(vectors: number[][]): number[] {
   return sum.map((s) => s / vectors.length);
 }
 
-export type EnrichResult =
-  | { overlapping: false; enrichedDescription: string; boundaryNotes: string; exemplarVectors: number[][]; exemplarTexts: string[] }
-  | { overlapping: true; conflictingBucketName: string; similarity: number };
+export interface EnrichResult {
+  enrichedDescription: string;
+  boundaryNotes: string;
+  exemplarVectors: number[][];
+  exemplarTexts: string[];
+  // Overlap is a warning only — exemplars are always returned regardless.
+  overlapping: boolean;
+  conflictingBucketName?: string;
+  similarity?: number;
+}
 
 export async function enrichBucket(
   name: string,
@@ -33,13 +40,29 @@ export async function enrichBucket(
   userId: number,
   skipOverlapCheck = false,
 ): Promise<EnrichResult> {
-  const client = new Anthropic();
-  const response = await withRetry(() =>
-    client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      system:
-        `You are helping configure an AI email classifier. Given a bucket name and short description, generate:
+  console.log(`[enrichBucket] starting for bucket: "${name}" userId=${userId} skipOverlapCheck=${skipOverlapCheck}`);
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+
+  const parameters: FunctionDeclarationSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      enrichedDescription: { type: SchemaType.STRING },
+      boundaryNotes: { type: SchemaType.STRING },
+      exemplarTexts: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    },
+    required: ['enrichedDescription', 'boundaryNotes', 'exemplarTexts'],
+  };
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    tools: [{ functionDeclarations: [{ name: 'enrich_bucket', description: 'Generate enriched description, boundary notes, and exemplar emails for a bucket.', parameters }] }],
+  });
+
+  const prompt =
+    `You are helping configure an AI email classifier. Given a bucket name and short description, generate:
 (1) an enriched description that is semantically detailed enough to embed accurately
 (2) boundary notes explaining what belongs vs what doesn't
 (3) 3-5 realistic example emails that would clearly belong in this bucket
@@ -47,40 +70,55 @@ export async function enrichBucket(
 Each example email MUST follow this exact format:
 [SUBJECT] {subject line} [FROM] {sender name} <{sender email}> [PREVIEW] {1-2 sentence preview}
 
-Make the examples specific and realistic — use real-sounding sender names, email addresses, and preview text. These will be embedded and used for semantic similarity matching, so they must be representative of actual emails that belong in this bucket.`,
-      messages: [{ role: 'user', content: `Bucket name: ${name}\nDescription: ${description}` }],
-      tools: [{
-        name: 'enrich_bucket',
-        input_schema: {
-          type: 'object' as const,
-          properties: {
-            enrichedDescription: { type: 'string' },
-            boundaryNotes: { type: 'string' },
-            exemplarTexts: { type: 'array', items: { type: 'string' }, minItems: 3, maxItems: 5 },
-          },
-          required: ['enrichedDescription', 'boundaryNotes', 'exemplarTexts'],
-        },
-      }],
-      tool_choice: { type: 'tool', name: 'enrich_bucket' },
-    }),
-  );
+Make the examples specific and realistic — use real-sounding sender names, email addresses, and preview text.
 
-  const toolBlock = response.content.find((b) => b.type === 'tool_use');
-  if (!toolBlock || toolBlock.type !== 'tool_use') throw new Error('LLM enrichment failed: no tool_use block');
-  const { enrichedDescription, boundaryNotes, exemplarTexts } = toolBlock.input as {
+Bucket name: ${name}
+Description: ${description}`;
+
+  console.log('[enrichBucket] calling Gemini...');
+  const result = await withRetry(
+    () => model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY, allowedFunctionNames: ['enrich_bucket'] } },
+    }),
+    2,
+  );
+  console.log('[enrichBucket] Gemini response received');
+
+  const usage = result.response.usageMetadata;
+  const cost = ((usage?.promptTokenCount ?? 0) / 1_000_000) * 0.10 + ((usage?.candidatesTokenCount ?? 0) / 1_000_000) * 0.40;
+  await db.insert(aiUsage).values({
+    userId,
+    model: 'gemini-2.5-flash',
+    operation: 'enrich_bucket',
+    inputTokens: usage?.promptTokenCount ?? 0,
+    outputTokens: usage?.candidatesTokenCount ?? null,
+    estimatedCost: cost,
+  }).catch((err) => console.error('[enrichBucket] Failed to log aiUsage:', err));
+
+  const calls = result.response.functionCalls();
+  if (!calls || calls.length === 0) throw new Error('Gemini enrichment failed: no function call returned');
+  const { enrichedDescription, boundaryNotes, exemplarTexts } = calls[0].args as {
     enrichedDescription: string;
     boundaryNotes: string;
     exemplarTexts: string[];
   };
 
+  console.log('[enrichBucket] embedding exemplars...');
   const exemplarVectors = await batchEmbed(exemplarTexts, userId);
+  console.log('[enrichBucket] embedding complete:', exemplarVectors.length, 'vectors');
   const newCentroid = centroid(exemplarVectors);
 
+  let overlapResult: { conflictingBucketName: string; similarity: number } | null = null;
+
+  console.log('[enrichBucket] running overlap check...');
   if (!skipOverlapCheck) {
     const existingBuckets = await db
       .select({ id: buckets.id, name: buckets.name })
       .from(buckets)
       .where(eq(buckets.userId, userId));
+
+    console.log(`[enrichBucket] checking overlap against ${existingBuckets.length} existing buckets`);
 
     for (const bucket of existingBuckets) {
       const exemplarRows = await db
@@ -90,13 +128,29 @@ Make the examples specific and realistic — use real-sounding sender names, ema
 
       const validVectors = exemplarRows
         .map((r) => r.embedding)
-        .filter((e): e is number[] => Array.isArray(e));
+        .filter((e): e is number[] => Array.isArray(e) && e.length > 0);
 
       if (validVectors.length === 0) continue;
-      const similarity = cosine(newCentroid, centroid(validVectors));
-      if (similarity > 0.8) return { overlapping: true, conflictingBucketName: bucket.name, similarity };
+      const bucketCentroid = centroid(validVectors);
+      if (bucketCentroid.length === 0) continue;
+      const similarity = cosine(newCentroid, bucketCentroid);
+      console.log(`[enrichBucket] similarity with "${bucket.name}": ${similarity.toFixed(4)}`);
+      if (similarity > 0.88) {
+        overlapResult = { conflictingBucketName: bucket.name, similarity };
+        break;
+      }
     }
   }
+  console.log('[enrichBucket] overlap check complete');
 
-  return { overlapping: false, enrichedDescription, boundaryNotes, exemplarVectors, exemplarTexts };
+  console.log('[enrichBucket] returning result');
+  return {
+    overlapping: !!overlapResult,
+    conflictingBucketName: overlapResult?.conflictingBucketName,
+    similarity: overlapResult?.similarity,
+    enrichedDescription,
+    boundaryNotes,
+    exemplarVectors,
+    exemplarTexts,
+  };
 }
