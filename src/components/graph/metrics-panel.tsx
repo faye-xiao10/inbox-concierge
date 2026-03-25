@@ -16,7 +16,7 @@ function Card({ value, label, subtext, pulse }: any) {
       padding: '24px 20px',
       display: 'flex',
       flexDirection: 'column',
-      minHeight: '160px' // Slightly taller to accommodate the new stacked layouts
+      minHeight: '160px'
     }}>
       <div className={pulse ? 'animate-pulse' : ''} style={{
         fontSize: typeof value === 'string' ? '2.5rem' : 'inherit',
@@ -29,7 +29,7 @@ function Card({ value, label, subtext, pulse }: any) {
       }}>
         {pulse ? '\u00a0' : value}
       </div>
-      <div style={{ marginTop: 'auto', paddingTop: 16 }}> {/* Added padding-top for spacing */}
+      <div style={{ marginTop: 'auto', paddingTop: 16 }}>
         <div style={{ color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.1em' }}>
           {label}
         </div>
@@ -90,7 +90,7 @@ export default function MetricsPanel({ metrics, isRunning }: MetricsPanelProps) 
         <Card value={TierBreakdown} label="Classification Method" subtext="Processing Hierarchy" pulse={pulse} />
         <Card value={metrics ? String(metrics.llmCalls) : ''} label="Total AI Operations" subtext="Batched API Calls" pulse={pulse} />
         <Card value={ConfidenceBreakdown} label="Avg Confidence" subtext="Model certainty per tier" pulse={pulse} />
-        <Card value={metrics ? String(metrics.exemplarsAdded) : ''} label="Exemplars" subtext="New patterns learned" pulse={pulse} />
+        <Card value={metrics ? String(metrics.exemplarsAdded) : ''} label="Exemplars" subtext="Total Semantic Patterns" pulse={pulse} />
         <Card value={metrics ? `${(metrics.durationMs / 1000).toFixed(1)}s` : ''} label="Processing Time" subtext="Pipeline duration" pulse={pulse} />
       </div>
 
@@ -131,8 +131,8 @@ function TierRow({ label, code, count, color, isBold }: any) {
 function MethodologyItem({ code, title, desc }: any) {
   return (
     <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
-      <div style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: 2 }}>
-        <span style={{ color: 'var(--text-tertiary)', marginRight: 4 }}>{code}</span> {title}
+      <div style={{ color: 'var(--accent-primary)', fontWeight: 800, marginBottom: 2 }}> {/* Matches T3 Color & Boldness */}
+        <span style={{ marginRight: 6 }}>{code}</span> {title}
       </div>
       <div style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>{desc}</div>
     </div>
