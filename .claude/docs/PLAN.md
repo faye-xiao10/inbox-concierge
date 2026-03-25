@@ -219,15 +219,18 @@ Acceptance:
 - [ ] Updates in real time via SSE
 
 ### Step 19: Error Handling + Edge Cases
-Audit all API routes for: missing/invalid auth, expired tokens (trigger refresh), Gmail API errors (rate limit, network), LLM API errors (rate limit, timeout, malformed response), empty inbox (0 threads), malformed email data (missing subject, missing sender). Add rate limiting middleware on /api/classify (1 run per minute per user). Add loading states and error boundaries to all pages.
+Audit all API routes for: missing/invalid auth, expired tokens (trigger refresh), Gmail API errors (rate limit, network), LLM API errors (rate limit, timeout, malformed response), empty inbox (0 threads), malformed email data (missing subject, missing sender). Add rate limiting middleware on /api/classify (1 run per minute per user). Add loading states and error boundaries to all pages. Create a custom not-found.tsx in the root app/ directory using existing styles/ logic and "Return to Dashboard" action.
 
 Acceptance:
-- [ ] No unhandled promise rejections
-- [ ] All API routes return meaningful error messages
-- [ ] Rate limiting on classify endpoint
-- [ ] Loading states on all async operations
-- [ ] Error boundaries catch component crashes
-- [ ] Empty states for zero emails, zero results after filter
+[ ] No unhandled promise rejections
+[ ] All API routes return meaningful error messages
+[ ] Rate limiting on classify endpoint
+[ ] Loading states on all async operations
+[ ] Error boundaries catch component crashes
+[ ] Empty states for zero emails, zero results after filter
+[ ] not-found.tsx renders correctly for invalid URLs (e.g., /inbox/non-existent-page).
+[ ] "Return to Dashboard" button in 404 UI correctly redirects to /inbox
+
 
 ### Step 20: Final Polish + Ship
 Run ESLint + Prettier on entire codebase. Run TypeScript strict check. Write README: what it is, how to run locally, architecture overview, screenshots. Record video: <10 min, demo the app, walk through architecture, show code, explain tradeoffs. Deploy final version to Vercel.

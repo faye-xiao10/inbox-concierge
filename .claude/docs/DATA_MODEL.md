@@ -8,8 +8,9 @@
 | id | serial PK | |
 | email | text | unique, from Google OAuth |
 | name | text | from Google profile |
-| googleAccessToken | text | encrypted |
-| googleRefreshToken | text | encrypted |
+| googleAccessToken | text | AES-GCM encrypted |
+| googleRefreshToken | text | AES-GCM encrypted |
+| tokenExpiresAt | timestamp | nullable; access token expiry (added Step 4) |
 | isDemo | boolean | default false |
 | createdAt | timestamp | default now() |
 

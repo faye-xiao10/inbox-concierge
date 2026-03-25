@@ -1,0 +1,1 @@
+ALTER TABLE "buckets" ADD COLUMN "embedding" vector(384);
