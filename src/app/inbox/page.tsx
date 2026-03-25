@@ -22,6 +22,7 @@ export default async function InboxPage() {
         color: buckets.color,
         sortOrder: buckets.sortOrder,
         isDefault: buckets.isDefault,
+        description: buckets.description,
       })
       .from(buckets)
       .where(eq(buckets.userId, session.userId))

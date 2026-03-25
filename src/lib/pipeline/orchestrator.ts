@@ -40,6 +40,8 @@ export type PipelineEvent =
   | { type: 'triage_complete' }
   | { type: 'pipeline_complete'; metrics: PipelineMetrics }
   | { type: 'reclassify_complete'; movedCount: number; tier3Count: number }
+  | { type: 'eviction_complete'; evictedCount: number; reassignedCount: number }
+  | { type: 'reclassify_progress'; checked: number; moved: number }
   | { type: 'bucket_enriching'; message: string }
   | { type: 'overlap_warning'; conflictingBucketName: string; similarity: number }
   | { type: 'error'; message: string; stage: string };

@@ -496,6 +496,41 @@ src/
   - Idle bucket rows: full row is now click target for custom buckets (`cursor-pointer hover:bg-secondary` + `onClick → openEdit`); `✎` demoted to `<span>` since row handles click
   - Exemplar section: "Examples" uppercase label added above chips; collapsed = single-line `truncate`; expanded = `pre-wrap break-word`; `(no text)` fallback added
 
+### Post-Step 12 Patch Set C: Exemplar Backfill + Vercel Enrichment Fix (branch: feature/reclassify-eviction-parallel)
+
+**Motivation:** Enrichment was being killed on Vercel because it ran after `controller.close()` — the serverless function terminates immediately when the stream closes. Custom bucket exemplars were never being created in production, leaving eviction blind and Tier 2 matching unable to find exemplar rows.
+
+**Modified files:**
+- `src/app/api/buckets/[id]/reclassify/route.ts` — major rework:
+  - Query exemplar count before stream starts
+  - Gate condition changed from `!bucket.enrichedDescription` to `needsEnrichment = !bucket.enrichedDescription || exemplarCount === 0` — re-enriches whenever exemplars are missing, even if `enrichedDescription` was previously saved (handles partial-success from prior Vercel kills)
+  - Enrichment moved inside stream using `Promise.all([runReclassification, enrichBucket])` — both finish before `controller.close()`, guaranteeing Vercel doesn't kill enrichment
+  - Added `DELETE FROM category_exemplars WHERE bucket_id = $id` before fresh exemplar inserts to prevent duplicate rows on re-enrich
+  - Overlap warning now emitted via SSE if enrichment detects conflict
+  - Added `count` import from drizzle-orm
+- `src/lib/pipeline/orchestrator.ts` — added `reclassify_progress` and `eviction_complete` to `PipelineEvent` union
+- `src/lib/pipeline/reclassify.ts` — rewrite:
+  - Ingest pass via single pgvector SQL (tier2 `< 0.25` direct, tier3 `0.25–0.35` LLM, `>= 0.35` skip)
+  - Tier 3 LLM batches run in `Promise.all` (parallel, not sequential)
+  - Eviction pass: CTE on `categoryExemplars` (not bucket centroid embedding) — emails are evicted when `MIN(ce.embedding <=> c.embedding) > 0.40`; best alt bucket found via CROSS JOIN; reassigned if `bestDist < 0.30`, otherwise nulled
+  - Emits `reclassify_progress`, `eviction_complete`, `reclassify_complete`
+- `src/components/inbox/bucket-tabs.tsx`:
+  - `CreationStatus` and `OverlapWarning` interfaces now include `isEdit: boolean`
+  - Banner verb: "Creating" vs "Updating" based on `isEdit`
+  - `handleBucketSaved(bucketId, name)` updates local bucket state immediately on rename (fixes stale tab names)
+  - `reclassify_progress` SSE event handled — transitions banner from "Setting up" to live counters
+  - `panelBuckets` now passes real `description` (was hardcoded null)
+- `src/components/inbox/manage-buckets-panel.tsx` — added `onBucketSaved?(bucketId, name)` callback; fires immediately after successful save before reclassification starts
+- `src/app/inbox/page.tsx` — added `description: buckets.description` to server-side bucket query
+- `src/scripts/check-exemplars.ts` — new diagnostic script: reports all buckets' exemplar counts and text coverage; flags custom buckets with 0 exemplars for backfill
+
+**Diagnostic findings:**
+- All exemplar rows have `text = null` — `enrichedDescription` is `NULL` for all buckets including Good Reads
+- Good Reads has 14 exemplar rows (vectors present, no text) from a partial enrichment that completed locally but wrote no `enrichedDescription`
+- `needsEnrichment` will fire for Good Reads on next reclassify trigger; stale rows will be deleted and replaced with fresh exemplars including text
+
+**To backfill Good Reads:** open Manage Buckets, edit description, save — PATCH clears `enrichedDescription`, reclassify SSE fires, enrichment now runs inside stream before close.
+
 ## Known Issues
 (none)
 
