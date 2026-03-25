@@ -293,7 +293,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo, a
         </div>
       </div>
       
-      {view === 'graph' && <GraphView />}
+      {view === 'graph' && <GraphView isDemo={isDemo} />}
 
       {view === 'list' && (<>
       <div className="flex items-center mb-1">

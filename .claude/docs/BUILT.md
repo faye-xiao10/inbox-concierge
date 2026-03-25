@@ -331,6 +331,17 @@ Steps 1–11 + style system complete + bucket rename migration done. Ready to bu
 - `src/components/inbox/classify-button.tsx` — added `onRunningChange?: (isRunning: boolean) => void` prop; calls `onRunningChange?.(true)` at start of `startClassify`; calls `onRunningChange?.(false)` on `pipeline_complete` and `error` events
 - `package.json` / `pnpm-lock.yaml` — added `@vercel/functions` (installed for `waitUntil` exploration, kept as dependency)
 
+### Step 15: Drag-to-Reclassify (branch: feature/step-15-drag-reclassify)
+
+**New files:**
+- `src/app/api/reclassify/route.ts` — POST, session-gated; validates threadId + newBucketId belong to user; updates classification (tier=1, confidence=1.0); inserts `categoryExemplars` row (source='manual', weight=1.0); logs to `reclassificationLog` (source='manual_drag') when fromBucketId is non-null; re-evaluates top 10 nearby ambiguous neighbors (confidence < 0.70) via pgvector distance ordering + Tier 2 resolveClassification logic; returns `{ success, reEvaluated: { threadId, newBucketId }[] }`
+- `src/components/graph/drag-behavior.ts` — pure D3/TS (no React); `DragNode` interface; `setupDragBehavior<N>` function: attaches `d3.drag()` to circles, manages centroid ring circles (r=28, pulse 28→34→28 on hover target), tracks `originalBucket`/`highlightedBucket` in closure refs, optimistically updates node fill color on drop, calls `onDrop` callback; rings positioned at centroid locations computed at dragstart
+
+**Modified files:**
+- `src/components/graph/email-graph.tsx` — full rewrite to stay under 200 lines (199 lines); added `onReclassify?` prop; creates `ringsG` group before `nodesG`; calls `setupDragBehavior` when `onReclassify` provided; cursor `grab` when drag enabled
+- `src/components/graph/graph-view.tsx` — added `isDemo?: boolean` prop; toast state (`{ message, visible }`); `handleReclassify` callback: shows toast, skips API in demo mode, calls `POST /api/reclassify`, applies `reEvaluated` node updates to local state; toast UI fixed bottom-center with CSS slide-up transition, 3s auto-dismiss; instructions line updated to mention drag
+- `src/components/inbox/bucket-tabs.tsx` — threads `isDemo` to `<GraphView isDemo={isDemo} />`
+
 ## Current File Tree
 ```
 src/
@@ -348,6 +359,7 @@ src/
       classify/route.ts
       embed/route.ts
       graph-data/route.ts
+      reclassify/route.ts
       sync/route.ts
       tier0-tier1/route.ts
       tier2/route.ts
@@ -359,6 +371,7 @@ src/
     page.tsx
   components/
     graph/
+      drag-behavior.ts
       email-graph.tsx
       filter-panel.tsx
       filter-types.ts
