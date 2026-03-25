@@ -479,6 +479,119 @@ src/
 - WHERE `isNotNull(classifications.bucketId)` → `isNotNull(classifications.umapX)` — include all emails with UMAP positions regardless of bucket state
 - Row mapping: `bucketId: row.bucketId ?? 0`, `bucketName: row.bucketName ?? 'Classifying...'` — null-bucket emails render as grey nodes mid-pipeline, snap to cluster on completion
 
+### feature/homepage-redesign: Marketing Landing Page (branch: feature/homepage-redesign)
+
+**New files:**
+- `src/app/page.tsx` — full rewrite as marketing landing page (server component): Nav (sticky, wordmark hidden on mobile) → Hero (2-col grid, text + visual split) → Feature cards (3-col responsive grid, 6 cards) → Footer; all CSS variables, no new deps
+- `src/components/landing/pipeline-animation.tsx` — `'use client'`; 5-stage pipeline diagram with sequential gold-border pulse (800ms per stage, loops); uses `useState` + `setInterval`
+
+**Modified files:**
+- `src/app/globals.css` — added 6 `@keyframes lp-float-*` animations for SVG node float effect (3–5px amplitude, prefixed to avoid conflicts)
+- `src/app/inbox/page.tsx` — demo mode banner: slim white bar at top of inbox when `session.isDemo`, info icon + "You're in demo mode — 20 fixture emails." + gold "Connect your Gmail →" link to `/api/auth/google`
+
+**Landing page sections:**
+1. Nav: "Inbox Concierge" wordmark (hidden mobile) + "Try Demo" (secondary) + "Sign in with Google" (primary gold)
+2. Hero: headline "Your inbox, finally sorted." in Fraunces 3.5rem; subhead; 2 stacked CTAs; trust line; right column = animated SVG graph cluster (40 nodes, 5 bucket colors, 6 float animations, cluster labels) + pipeline animation split by divider
+3. Features: 6 cards — 4-Tier Classification, Streams Live, Semantic Graph View, Custom Buckets, Pipeline Metrics, Security Scanning; inline SVG icons; 1/2/3 col responsive
+4. Footer: centered tech stack line
+
+**SVG graph node colors (hardcoded, from seed-buckets.ts):** Direct #3B82F6 · Updates #F59E0B · Newsletters #14B8A6 · Promotions #22C55E · Auto-Archive #6B7280
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      buckets/[id]/exemplars/route.ts
+      buckets/[id]/reclassify/route.ts
+      buckets/[id]/route.ts
+      buckets/reclassify-displaced/route.ts  ← gutted (410)
+      buckets/route.ts
+      classify/route.ts
+      embed/route.ts
+      graph-data/route.ts
+      reclassify/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    not-found.tsx
+    page.tsx
+  components/
+    graph/
+      drag-behavior.ts
+      email-graph.tsx
+      filter-panel.tsx
+      filter-types.ts
+      graph-tooltip.tsx
+      graph-utils.ts
+      graph-view.tsx
+      metrics-panel.tsx
+    inbox/
+      bucket-tabs.tsx
+      classify-button.tsx
+      email-list.tsx
+      email-row.tsx
+      empty-state.tsx
+      manage-buckets-button.tsx
+      manage-buckets-panel.tsx
+    landing/
+      pipeline-animation.tsx
+    ui/
+      button.tsx
+      error-boundary.tsx
+  fixtures/demo-threads.json
+  lib/
+    buckets/enrich-bucket.ts
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-graph-data.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/reclassify.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+  scripts/
+    check-exemplars.ts
+    embed-existing-buckets.ts
+    rename-buckets.ts
+    reseed-direct.ts
+    reseed-exemplars.ts
+```
+
 ## Known Issues
 - `Total AI Operations` metric always shows 1 — insert structure confirmed correct; root cause (filter vs. aggregation) pending live run confirmation
 
