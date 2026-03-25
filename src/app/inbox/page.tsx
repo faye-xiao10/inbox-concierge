@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { buckets } from '@/lib/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import BucketTabs from '@/components/inbox/bucket-tabs';
+import ErrorBoundary from '@/components/ui/error-boundary';
 
 export default async function InboxPage() {
   const session = await getSessionFromCookies();
@@ -35,7 +36,9 @@ export default async function InboxPage() {
   return (
     <main className="min-h-screen bg-primary">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <BucketTabs threads={threads} buckets={userBuckets} isDemo={session.isDemo} autoClassify={autoClassify} />
+        <ErrorBoundary>
+          <BucketTabs threads={threads} buckets={userBuckets} isDemo={session.isDemo} autoClassify={autoClassify} />
+        </ErrorBoundary>
       </div>
     </main>
   );

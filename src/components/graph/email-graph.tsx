@@ -31,6 +31,7 @@ export default function EmailGraph({ nodes, width, height, filterState, onReclas
   const badgesRef = useRef<CircleSelection | null>(null);
   const simNodesRef = useRef<SimNode[]>([]);
   const nodeSizeMultiplierRef = useRef(filterState.nodeSizeMultiplier);
+  const [allFiltered, setAllFiltered] = useState(false);
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -185,6 +186,8 @@ export default function EmailGraph({ nodes, width, height, filterState, onReclas
 
     badges?.transition().duration(200)
       .attr('opacity', (d) => passes(d) ? 1.0 : 0.05);
+
+    setAllFiltered(simNodes.filter(passes).length === 0);
   }, [filterState]);
 
   return (
@@ -192,6 +195,17 @@ export default function EmailGraph({ nodes, width, height, filterState, onReclas
       <svg ref={svgRef} width={width} height={height}
         style={{ background: 'var(--bg-primary, #FAF5EE)', borderRadius: 8 }}>
         <g ref={gRef} />
+        {allFiltered && nodes.length > 0 && (
+          <text
+            x={width / 2}
+            y={height / 2}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{ fill: 'var(--text-tertiary)', fontSize: 14, pointerEvents: 'none' }}
+          >
+            No emails match the current filters
+          </text>
+        )}
       </svg>
       <GraphTooltip node={tooltip.node} x={tooltip.x} y={tooltip.y} visible={tooltip.visible} />
     </div>

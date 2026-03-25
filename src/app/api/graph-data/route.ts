@@ -7,8 +7,11 @@ export async function GET(request: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
   }
 
-  const nodes = await getGraphData(session.userId);
-  return new Response(JSON.stringify(nodes), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  try {
+    const nodes = await getGraphData(session.userId);
+    return new Response(JSON.stringify(nodes), { headers: { 'Content-Type': 'application/json' } });
+  } catch (err) {
+    console.error('[graph-data] DB error:', err);
+    return new Response(JSON.stringify({ error: 'Failed to load graph data' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
 }

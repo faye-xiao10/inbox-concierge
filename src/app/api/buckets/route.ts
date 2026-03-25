@@ -24,7 +24,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!session) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
 
   let body: { name?: string; description?: string; force?: boolean } = {};
-  try { body = await request.json(); } catch { /* use defaults */ }
+  try { body = await request.json(); } catch {
+    return new Response(JSON.stringify({ error: 'Invalid request body' }), { status: 400 });
+  }
 
   const name = (body.name ?? '').trim();
   const description = (body.description ?? '').trim();
