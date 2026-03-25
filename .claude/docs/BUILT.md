@@ -470,6 +470,15 @@ src/
 - Diagnostic logs added to `orchestrator.ts` (`computeMetrics`), `gemini-embed.ts`, and `llm-classify.ts` to capture raw `aiUsage` query result, `llmRows` count value, `runStart` timestamp, and per-insert timestamps — then removed after confirming insert structure.
 - Root cause not yet isolated. Likely candidates: `gte(aiUsage.createdAt, runStart)` timestamp comparison issue with Neon HTTP driver, or `count()` Drizzle aggregate returning unexpected value. Requires a live classify run with logs to confirm.
 
+### fix/graph-mid-pipeline-flicker: Graph Mid-Pipeline Stability (branch: fix/graph-mid-pipeline-flicker)
+
+**Bug:** During a classify run, `resetForFullMode` nulls `bucketId` on default-bucket emails. The graph inner-joined on `bucketId`, so those emails vanished mid-run — graph dropped from 229 → 34 nodes while classifying.
+
+**Fix — `src/lib/inbox/get-graph-data.ts` only:**
+- `innerJoin(buckets, ...)` → `leftJoin(buckets, ...)` — emails without a bucket no longer excluded
+- WHERE `isNotNull(classifications.bucketId)` → `isNotNull(classifications.umapX)` — include all emails with UMAP positions regardless of bucket state
+- Row mapping: `bucketId: row.bucketId ?? 0`, `bucketName: row.bucketName ?? 'Classifying...'` — null-bucket emails render as grey nodes mid-pipeline, snap to cluster on completion
+
 ## Known Issues
 - `Total AI Operations` metric always shows 1 — insert structure confirmed correct; root cause (filter vs. aggregation) pending live run confirmation
 

@@ -46,11 +46,11 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
         umapY: classifications.umapY,
       })
       .from(classifications)
-      .innerJoin(buckets, eq(classifications.bucketId, buckets.id))
+      .leftJoin(buckets, eq(classifications.bucketId, buckets.id))
       .where(
         and(
           eq(classifications.userId, userId),
-          isNotNull(classifications.bucketId),
+          isNotNull(classifications.umapX),
         ),
       )
       .orderBy(desc(classifications.timestamp));
@@ -68,8 +68,8 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
       senderName: row.senderName ?? '',
       senderEmail: row.senderEmail ?? '',
       snippet: row.snippet ?? '',
-      bucketId: row.bucketId!,
-      bucketName: row.bucketName ?? 'Unknown',
+      bucketId: row.bucketId ?? 0,
+      bucketName: row.bucketName ?? 'Classifying...',
       bucketColor: row.bucketColor ?? '#888888',
       classificationTier: row.classificationTier ?? 0,
       confidence: row.confidence ?? 1.0,
