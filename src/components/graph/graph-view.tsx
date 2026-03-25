@@ -7,12 +7,23 @@ import { DEFAULT_FILTER_STATE } from './filter-types';
 import EmailGraph from './email-graph';
 import FilterPanel from './filter-panel';
 
-export default function GraphView() {
+interface GraphViewProps {
+  isDemo?: boolean;
+}
+
+interface Toast {
+  message: string;
+  visible: boolean;
+}
+
+export default function GraphView({ isDemo }: GraphViewProps) {
   const [nodes, setNodes] = useState<EmailNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterState, setFilterState] = useState<FilterState>(DEFAULT_FILTER_STATE);
+  const [toast, setToast] = useState<Toast | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch('/api/graph-data')
@@ -25,7 +36,6 @@ export default function GraphView() {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
@@ -35,7 +45,6 @@ export default function GraphView() {
         });
       }
     });
-
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
@@ -50,35 +59,70 @@ export default function GraphView() {
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [nodes]);
 
+  function showToast(message: string) {
+    setToast({ message, visible: true });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  }
+
+  async function handleReclassify(threadId: string, newBucketId: number) {
+    const bucketName = buckets.find((b) => b.id === newBucketId)?.name ?? 'new bucket';
+
+    if (isDemo) {
+      showToast(`Moved to ${bucketName} · demo mode`);
+      return;
+    }
+
+    showToast(`Moved to ${bucketName} · system learned from your correction`);
+
+    try {
+      const res = await fetch('/api/reclassify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threadId, newBucketId }),
+      });
+
+      if (!res.ok) throw new Error('API error');
+
+      const { reEvaluated } = await res.json() as { reEvaluated: { threadId: string; newBucketId: number }[] };
+
+      if (reEvaluated.length > 0) {
+        setNodes((prev) => {
+          const map = new Map(reEvaluated.map((r) => [r.threadId, r.newBucketId]));
+          return prev.map((n) => {
+            const newId = map.get(n.threadId);
+            if (!newId) return n;
+            const bucket = buckets.find((b) => b.id === newId);
+            return { ...n, bucketId: newId, bucketName: bucket?.name ?? n.bucketName, bucketColor: bucket?.color ?? n.bucketColor };
+          });
+        });
+      }
+    } catch {
+      showToast('Move failed — email stayed in original bucket');
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: 400 }}>
-        <div
-          style={{
-            width: 24,
-            height: 24,
-            border: '3px solid var(--border-default)',
-            borderTopColor: 'var(--accent-primary)',
-            borderRadius: '50%',
-            animation: 'spin 0.7s linear infinite',
-          }}
-        />
+        <div style={{
+          width: 24, height: 24,
+          border: '3px solid var(--border-default)',
+          borderTopColor: 'var(--accent-primary)',
+          borderRadius: '50%',
+          animation: 'spin 0.7s linear infinite',
+        }} />
       </div>
     );
   }
 
   if (nodes.length === 0) {
     return (
-      <div
-        className="flex flex-col items-center justify-center gap-3"
-        style={{ height: 400, color: 'var(--text-secondary)' }}
-      >
+      <div className="flex flex-col items-center justify-center gap-3"
+        style={{ height: 400, color: 'var(--text-secondary)' }}>
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <circle cx="7" cy="7" r="2" />
-          <circle cx="17" cy="7" r="2" />
-          <circle cx="12" cy="17" r="2" />
-          <circle cx="4" cy="17" r="2" />
-          <circle cx="20" cy="17" r="2" />
+          <circle cx="7" cy="7" r="2" /><circle cx="17" cy="7" r="2" /><circle cx="12" cy="17" r="2" />
+          <circle cx="4" cy="17" r="2" /><circle cx="20" cy="17" r="2" />
         </svg>
         <p className="body-sm text-center" style={{ maxWidth: 280 }}>
           Run <strong>Classify Inbox</strong> to generate the graph view
@@ -89,32 +133,25 @@ export default function GraphView() {
 
   return (
     <>
-      <div
-        className="border border-black/10 rounded-lg shadow-sm"
-        style={{ width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'row' }}
-      >
-        {/* Graph — containerRef here so ResizeObserver measures graph-only width */}
+      <div className="border border-black/10 rounded-lg shadow-sm"
+        style={{ width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'row' }}>
         <div ref={containerRef} style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           <EmailGraph
             nodes={nodes}
             width={dimensions.width}
             height={dimensions.height}
             filterState={filterState}
+            onReclassify={handleReclassify}
           />
         </div>
-
-        {/* Filter panel */}
-        <div
-          style={{
-            width: 260,
-            flexShrink: 0,
-            borderLeft: '1px solid var(--border-default)',
-            background: 'var(--bg-elevated)',
-            height: dimensions.height,
-            overflowY: 'auto',
-            boxShadow: '-2px 0 8px rgba(59,50,38,0.04)',
-          }}
-        >
+        <div style={{
+          width: 260, flexShrink: 0,
+          borderLeft: '1px solid var(--border-default)',
+          background: 'var(--bg-elevated)',
+          height: dimensions.height,
+          overflowY: 'auto',
+          boxShadow: '-2px 0 8px rgba(59,50,38,0.04)',
+        }}>
           <FilterPanel
             filterState={filterState}
             onChange={(patch) => setFilterState((prev) => ({ ...prev, ...patch }))}
@@ -125,8 +162,33 @@ export default function GraphView() {
       </div>
 
       <p className="text-sm text-center mt-2 opacity-50 select-none">
-        Each dot is an email &nbsp;·&nbsp; Size = urgency &nbsp;·&nbsp; Color = bucket &nbsp;·&nbsp; Opacity = recency &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Click a node to inspect
+        Each dot is an email &nbsp;·&nbsp; Size = urgency &nbsp;·&nbsp; Color = bucket &nbsp;·&nbsp; Opacity = recency &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Drag a node to reclassify
       </p>
+
+      {/* Toast */}
+      <div style={{
+        position: 'fixed',
+        bottom: 32,
+        left: '50%',
+        transform: `translateX(-50%) translateY(${toast?.visible ? '0' : '12px'})`,
+        opacity: toast?.visible ? 1 : 0,
+        transition: 'opacity 200ms ease, transform 200ms ease',
+        pointerEvents: 'none',
+        zIndex: 1000,
+      }}>
+        <div style={{
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 8,
+          padding: '8px 16px',
+          fontSize: 13,
+          color: 'var(--text-primary)',
+          whiteSpace: 'nowrap',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+        }}>
+          {toast?.message}
+        </div>
+      </div>
     </>
   );
 }
