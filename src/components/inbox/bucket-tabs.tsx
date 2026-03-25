@@ -10,7 +10,7 @@ import ManageBucketsPanel, { type PanelBucket } from './manage-buckets-panel';
 
 interface BucketTabsProps {
   threads: InboxThread[];
-  buckets: { id: number; name: string; color: string; sortOrder: number; isDefault: boolean }[];
+  buckets: { id: number; name: string; color: string; sortOrder: number; isDefault: boolean; description: string | null }[];
   isDemo: boolean;
 }
 
@@ -19,6 +19,7 @@ interface CreationStatus {
   phase: string;
   checked: number;
   moved: number;
+  isEdit: boolean;
   label?: string; // overrides default "Creating..." display text
 }
 
@@ -33,6 +34,7 @@ interface OverlapWarning {
   similarity: number;
   bucketId: number;
   bucketName: string;
+  isEdit: boolean;
 }
 
 const UNCATEGORIZED_ID = -1;
@@ -66,22 +68,26 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
     router.refresh();
   }
 
+  function handleBucketSaved(bucketId: number, name: string) {
+    setBuckets((prev) => prev.map((b) => b.id === bucketId ? { ...b, name } : b));
+  }
+
   function handleBucketCreated(bucket: PanelBucket) {
     setBuckets((prev) => [...prev, bucket]);
     setActiveId(bucket.id);
-    startCreationSSE(bucket.id, bucket.name);
+    startCreationSSE(bucket.id, bucket.name, false);
   }
 
   function handleBucketUpdated(bucketId: number) {
     const bucket = buckets.find((b) => b.id === bucketId);
-    startCreationSSE(bucketId, bucket?.name ?? 'bucket');
+    startCreationSSE(bucketId, bucket?.name ?? 'bucket', true);
   }
 
   function handleForceCreate() {
     if (!overlapWarning) return;
-    const { bucketId, bucketName } = overlapWarning;
+    const { bucketId, bucketName, isEdit } = overlapWarning;
     setOverlapWarning(null);
-    startCreationSSE(bucketId, bucketName, true);
+    startCreationSSE(bucketId, bucketName, isEdit, true);
   }
 
   function handleBucketDeleted(bucketId: number, _bucketName: string) {
@@ -94,8 +100,8 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
     classifyButtonRef.current?.startClassify();
   }
 
-  async function startCreationSSE(bucketId: number, bucketName: string, force = false) {
-    setCreationStatus({ bucketName, phase: 'Setting up bucket...', checked: 0, moved: 0 });
+  async function startCreationSSE(bucketId: number, bucketName: string, isEdit: boolean, force = false) {
+    setCreationStatus({ bucketName, phase: 'Setting up bucket...', checked: 0, moved: 0, isEdit });
     setCreationDone(null);
 
     try {
@@ -121,7 +127,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
           if (!line.startsWith('data: ')) continue;
           try {
             const event = JSON.parse(line.slice(6)) as Record<string, unknown>;
-            handleSSEEvent(bucketId, bucketName, event);
+            handleSSEEvent(bucketId, bucketName, isEdit, event);
             if (event.type === 'reclassify_complete' || event.type === 'overlap_warning') {
               return;
             }
@@ -135,10 +141,15 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
     }
   }
 
-  function handleSSEEvent(bucketId: number, bucketName: string, event: Record<string, unknown>) {
+  function handleSSEEvent(bucketId: number, bucketName: string, isEdit: boolean, event: Record<string, unknown>) {
     switch (event.type) {
       case 'bucket_enriching':
         setCreationStatus((prev) => prev ? { ...prev, phase: 'Setting up bucket...' } : null);
+        break;
+      case 'reclassify_progress':
+        setCreationStatus((prev) =>
+          prev ? { ...prev, phase: 'Scanning...', checked: (event.checked as number) ?? prev.checked, moved: (event.moved as number) ?? prev.moved } : null,
+        );
         break;
       case 'tier3_progress':
         setCreationStatus((prev) =>
@@ -150,6 +161,15 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
           setCreationStatus((prev) => prev ? { ...prev, moved: prev.moved + 1 } : null);
         }
         break;
+      case 'eviction_complete': {
+        const evicted = event.evictedCount as number;
+        if (evicted > 0) {
+          setCreationStatus((prev) =>
+            prev ? { ...prev, phase: `↩ ${evicted} emails re-evaluated` } : null,
+          );
+        }
+        break;
+      }
       case 'overlap_warning':
         setCreationStatus(null);
         setOverlapWarning({
@@ -157,6 +177,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
           similarity: event.similarity as number,
           bucketId,
           bucketName,
+          isEdit,
         });
         break;
       case 'reclassify_complete': {
@@ -173,7 +194,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
     }
   }
 
-  const panelBuckets = buckets.map((b) => ({ ...b, description: null }));
+  const panelBuckets = buckets.map((b) => ({ ...b }));
 
   return (
     <div>
@@ -251,11 +272,12 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
         >
           <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--text-tertiary)', borderTopColor: 'var(--text-primary)', borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
           <span>
-            {creationStatus.label
-              ? `${creationStatus.label}... ${creationStatus.moved} reclassified`
-              : creationStatus.phase === 'Setting up bucket...'
-                ? `Creating "${creationStatus.bucketName}"... Setting up`
-                : `Creating "${creationStatus.bucketName}"... ${creationStatus.checked} checked, ${creationStatus.moved} moved`}
+            {(() => {
+              const verb = creationStatus.isEdit ? 'Updating' : 'Creating';
+              if (creationStatus.label) return `${creationStatus.label}... ${creationStatus.moved} reclassified`;
+              if (creationStatus.phase === 'Setting up bucket...') return `${verb} "${creationStatus.bucketName}"... Setting up`;
+              return `${verb} "${creationStatus.bucketName}"... ${creationStatus.checked} checked, ${creationStatus.moved} moved`;
+            })()}
           </span>
         </div>
       )}
@@ -298,6 +320,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
         onBucketCreated={handleBucketCreated}
         onBucketDeleted={handleBucketDeleted}
         onBucketUpdated={handleBucketUpdated}
+        onBucketSaved={handleBucketSaved}
         onBucketsChanged={handleBucketsChanged}
       />
     </div>

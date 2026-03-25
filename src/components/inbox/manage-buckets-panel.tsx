@@ -20,6 +20,7 @@ interface ManageBucketsPanelProps {
   onBucketCreated: (bucket: PanelBucket) => void;
   onBucketDeleted: (bucketId: number, bucketName: string) => void;
   onBucketUpdated?: (bucketId: number) => void;
+  onBucketSaved?: (bucketId: number, name: string) => void;
   onBucketsChanged: () => void;
 }
 
@@ -32,7 +33,7 @@ interface Exemplar {
 
 const DEFAULT_BUCKET_NAMES = new Set(['Direct', 'Updates', 'Newsletters', 'Promotions', 'Auto-Archive']);
 
-export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBuckets, isDemo, onBucketCreated, onBucketDeleted, onBucketUpdated, onBucketsChanged }: ManageBucketsPanelProps) {
+export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBuckets, isDemo, onBucketCreated, onBucketDeleted, onBucketUpdated, onBucketSaved, onBucketsChanged }: ManageBucketsPanelProps) {
   const [buckets, setBuckets] = useState<PanelBucket[]>(initialBuckets);
 
   // New bucket form
@@ -114,6 +115,7 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
     setBuckets((prev) => prev.map((b) => b.id === bucketId ? { ...b, name: editName, description: editDesc } : b));
     setSaveState('done');
     setTimeout(() => closeEdit(), 800);
+    onBucketSaved?.(bucketId, editName);
     if (data.needsReclassify) {
       onBucketUpdated?.(bucketId);
     } else {

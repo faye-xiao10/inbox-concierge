@@ -39,7 +39,6 @@ pnpm db:generate / db:migrate / db:studio
    - Don't read docs you don't need
 
 **During session:**
-- Run `/compact` at natural breakpoints (after completing a subtask, ~60% context)
 - Run `/cost` periodically to monitor context usage
 
 **End of session** (triggers: "wrap up", "done", "update docs", "end of feature"):
