@@ -202,8 +202,10 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
     <div>
       {/* Page header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="heading-xl" style={{ color: 'var(--text-primary)' }}>Inbox</h1>
-        <div className="flex items-center gap-2">
+        {/* Left: Title + View Switcher */}
+        <div className="flex items-center gap-4">
+          <h1 className="heading-xl" style={{ color: 'var(--text-primary)' }}>Inbox</h1>
+          
           <div
             className="flex items-center gap-0.5 rounded-md p-0.5"
             style={{ border: '1px solid var(--border-default)' }}
@@ -211,29 +213,36 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
             <button
               onClick={() => setView('list')}
               title="List view"
-              className="rounded p-1.5 transition-colors duration-150"
+              className={`rounded p-1.5 transition-all duration-150 cursor-pointer
+                ${view === 'list' 
+                  ? 'bg-[var(--bg-tertiary)] shadow-sm' 
+                  : 'bg-transparent hover:bg-[var(--bg-secondary)]'
+                }
+              `}
               style={{
-                background: view === 'list' ? 'var(--bg-tertiary)' : 'transparent',
                 color: view === 'list' ? 'var(--text-primary)' : 'var(--text-tertiary)',
               }}
             >
-              {/* List icon */}
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <line x1="3" y1="4" x2="11" y2="4" />
                 <line x1="3" y1="7" x2="11" y2="7" />
                 <line x1="3" y1="10" x2="11" y2="10" />
               </svg>
             </button>
+
             <button
               onClick={() => setView('graph')}
               title="Graph view"
-              className="rounded p-1.5 transition-colors duration-150"
+              className={`rounded p-1.5 transition-all duration-150 cursor-pointer
+                ${view === 'graph' 
+                  ? 'bg-[var(--bg-tertiary)] shadow-sm' 
+                  : 'bg-transparent hover:bg-[var(--bg-secondary)]'
+                }
+              `}
               style={{
-                background: view === 'graph' ? 'var(--bg-tertiary)' : 'transparent',
                 color: view === 'graph' ? 'var(--text-primary)' : 'var(--text-tertiary)',
               }}
             >
-              {/* Scatter/cluster icon */}
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <circle cx="4" cy="4" r="1.5" />
                 <circle cx="10" cy="3" r="1.5" />
@@ -243,11 +252,15 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
               </svg>
             </button>
           </div>
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2">
           <ClassifyButton ref={classifyButtonRef} isDemo={isDemo} />
           <ManageBucketsButton onClick={() => setIsPanelOpen(true)} />
         </div>
       </div>
-
+      
       {view === 'graph' && <GraphView />}
 
       {view === 'list' && (<>

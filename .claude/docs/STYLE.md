@@ -73,6 +73,7 @@ Line height: body 1.55, headings 1.25.
 - Use Lucide icons, outlined, 16px
 - Transitions: 150ms ease, no springs or bounces
 - Sidebar + content layout, not top-nav
+- Every interactabale element needs to have cursor-pointer
 
 ## Don't
 

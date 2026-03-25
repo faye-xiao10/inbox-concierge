@@ -1,7 +1,6 @@
 import { db } from '@/lib/db';
 import { classifications, buckets } from '@/lib/db/schema';
-import { eq, isNotNull, desc } from 'drizzle-orm';
-import { and } from 'drizzle-orm';
+import { eq, isNotNull, desc, and } from 'drizzle-orm';
 
 export interface EmailNode {
   threadId: string;
@@ -51,12 +50,17 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
       .where(
         and(
           eq(classifications.userId, userId),
-          isNotNull(classifications.umapX),
-          isNotNull(classifications.umapY),
           isNotNull(classifications.bucketId),
         ),
       )
       .orderBy(desc(classifications.timestamp));
+
+    const noUmap = rows.filter((r) => r.umapX === null).length;
+    if (noUmap > 0) {
+      console.log(`[graph-data] userId=${userId}: ${rows.length} emails returned, ${noUmap} missing UMAP coords (placed at origin)`);
+    } else {
+      console.log(`[graph-data] userId=${userId}: ${rows.length} emails returned, all have UMAP coords`);
+    }
 
     return rows.map((row) => ({
       threadId: row.threadId,
@@ -74,8 +78,8 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
       isUnread: row.isUnread,
       securityFlags: row.securityFlags ?? [],
       llmReasoning: row.llmReasoning ?? null,
-      umapX: row.umapX!,
-      umapY: row.umapY!,
+      umapX: row.umapX ?? 0,
+      umapY: row.umapY ?? 0,
       cosineSimilarities: [],
     }));
   } catch (error) {

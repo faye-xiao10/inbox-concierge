@@ -16,7 +16,7 @@ export function recencyToOpacity(timestamp: string): number {
 }
 
 export function tierToStroke(tier: number): string | null {
-  if (tier === 2) return '#F5C518';
+  if (tier === 2) return '#8a775e'; 
   if (tier === 3) return '#E53935';
   return null;
 }

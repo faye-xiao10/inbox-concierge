@@ -75,76 +75,6 @@ Steps 1–11 + style system complete + bucket rename migration done. Ready to bu
 - src/components/inbox/email-list.tsx — accepts + forwards `isDemo` to EmailRow
 - src/components/inbox/email-row.tsx — `isDemo=true` → plain div (no link); `isDemo=false` → `<a>` linking to Gmail thread (`https://mail.google.com/mail/u/0/#inbox/{threadId}`) with hover styles
 
-## Current File Tree
-```
-src/
-  app/
-    api/
-      auth/
-        callback/route.ts
-        demo/route.ts
-        google/route.ts
-        signout/route.ts
-      embed/route.ts
-      sync/route.ts
-      tier0-tier1/route.ts
-      tier2/route.ts
-      tier3/route.ts
-    globals.css
-    inbox/
-      loading.tsx
-      page.tsx
-    layout.tsx
-    page.tsx
-  components/
-    inbox/
-      bucket-tabs.tsx
-      email-list.tsx
-      email-row.tsx
-      empty-state.tsx
-    ui/
-      button.tsx
-  fixtures/
-    demo-threads.json
-  lib/
-    db/
-      index.ts
-      seed-buckets.ts
-      seed-demo.ts
-      setup.ts
-      vector.ts
-      schema/
-        index.ts
-        users.ts
-        buckets.ts
-        category-exemplars.ts
-        classifications.ts
-        reclassification-log.ts
-        ai-usage.ts
-        relations.ts
-    embed/
-      gemini-embed.ts
-      umap-runner.ts
-    gmail/
-      client.ts
-      sync.ts
-    google/
-      auth.ts
-    inbox/
-      format-timestamp.ts
-      get-inbox-threads.ts
-    pipeline/
-      bootstrap-exemplars.ts
-      embed-threads.ts
-      llm-classify.ts
-      tier0-tier1.ts
-      tier2.ts
-      tier3.ts
-    session.ts
-    utils/
-      retry.ts
-```
-
 ### Step 7: Embedding Pipeline (branch: feature/step-7-embedding)
 - src/lib/utils/retry.ts — `withRetry<T>`: exponential backoff + jitter, retries on 429/5xx, max 3 attempts
 - src/lib/embed/gemini-embed.ts — `buildEmbeddingInput`: formats thread as structured string; `batchEmbed(texts, userId)`: calls `gemini-embedding-001` batchEmbedContents (up to 100 texts), validates 384 dims + no NaN, logs to aiUsage
@@ -202,67 +132,6 @@ src/
 
 **Migration output:** 4 buckets renamed (2 users), 15 stale exemplars deleted.
 
-## Current File Tree
-```
-src/
-  app/
-    api/
-      auth/callback/route.ts
-      auth/demo/route.ts
-      auth/google/route.ts
-      auth/signout/route.ts
-      classify/route.ts
-      embed/route.ts
-      sync/route.ts
-      tier0-tier1/route.ts
-      tier2/route.ts
-      tier3/route.ts
-    globals.css
-    inbox/loading.tsx
-    inbox/page.tsx
-    layout.tsx
-    page.tsx
-  components/
-    inbox/bucket-tabs.tsx
-    inbox/classify-button.tsx
-    inbox/email-list.tsx
-    inbox/email-row.tsx
-    inbox/empty-state.tsx
-    ui/button.tsx
-  fixtures/demo-threads.json
-  lib/
-    db/index.ts
-    db/schema/ai-usage.ts
-    db/schema/buckets.ts
-    db/schema/category-exemplars.ts
-    db/schema/classifications.ts
-    db/schema/index.ts
-    db/schema/reclassification-log.ts
-    db/schema/relations.ts
-    db/schema/users.ts
-    db/seed-buckets.ts
-    db/seed-demo.ts
-    db/setup.ts
-    db/vector.ts
-    embed/gemini-embed.ts
-    embed/umap-runner.ts
-    gmail/client.ts
-    gmail/sync.ts
-    google/auth.ts
-    inbox/format-timestamp.ts
-    inbox/get-inbox-threads.ts
-    pipeline/bootstrap-exemplars.ts
-    pipeline/embed-threads.ts
-    pipeline/llm-classify.ts
-    pipeline/orchestrator.ts
-    pipeline/security-scan.ts
-    pipeline/tier0-tier1.ts
-    pipeline/tier2.ts
-    pipeline/tier3.ts
-    pipeline/triage.ts
-    session.ts
-    utils/retry.ts
-```
 
 ### Step 12: Custom Buckets + Reclassification (branch: feature/step-12-custom-buckets)
 
@@ -301,80 +170,6 @@ src/
 
 **DB migration:** `drizzle/0002_swift_mulholland_black.sql` — run `pnpm db:migrate` to add `text` column to `category_exemplars`.
 
-## Current File Tree
-```
-src/
-  app/
-    api/
-      auth/callback/route.ts
-      auth/demo/route.ts
-      auth/google/route.ts
-      auth/signout/route.ts
-      buckets/[id]/exemplars/route.ts
-      buckets/[id]/reclassify/route.ts
-      buckets/[id]/route.ts
-      buckets/reclassify-displaced/route.ts
-      buckets/route.ts
-      classify/route.ts
-      embed/route.ts
-      sync/route.ts
-      tier0-tier1/route.ts
-      tier2/route.ts
-      tier3/route.ts
-    globals.css
-    inbox/loading.tsx
-    inbox/page.tsx
-    layout.tsx
-    page.tsx
-  components/
-    inbox/bucket-tabs.tsx
-    inbox/classify-button.tsx
-    inbox/email-list.tsx
-    inbox/email-row.tsx
-    inbox/empty-state.tsx
-    inbox/manage-buckets-button.tsx
-    inbox/manage-buckets-panel.tsx
-    ui/button.tsx
-  fixtures/demo-threads.json
-  lib/
-    buckets/enrich-bucket.ts
-    db/index.ts
-    db/schema/ai-usage.ts
-    db/schema/buckets.ts
-    db/schema/category-exemplars.ts
-    db/schema/classifications.ts
-    db/schema/index.ts
-    db/schema/reclassification-log.ts
-    db/schema/relations.ts
-    db/schema/users.ts
-    db/seed-buckets.ts
-    db/seed-demo.ts
-    db/setup.ts
-    db/vector.ts
-    embed/gemini-embed.ts
-    embed/umap-runner.ts
-    gmail/client.ts
-    gmail/sync.ts
-    google/auth.ts
-    inbox/format-timestamp.ts
-    inbox/get-inbox-threads.ts
-    pipeline/bootstrap-exemplars.ts
-    pipeline/embed-threads.ts
-    pipeline/llm-classify.ts
-    pipeline/orchestrator.ts
-    pipeline/reclassify.ts
-    pipeline/security-scan.ts
-    pipeline/tier0-tier1.ts
-    pipeline/tier2.ts
-    pipeline/tier3.ts
-    pipeline/triage.ts
-    session.ts
-    utils/retry.ts
-  scripts/
-    rename-buckets.ts
-    reseed-direct.ts
-    reseed-exemplars.ts
-```
 
 ### Post-Step 12 Patch Set A: Performance + Custom Bucket Polish (branch: feature/bucket-embedding-fast-reclassify → feature/custom-bucket-preserve)
 
@@ -406,82 +201,6 @@ src/
 - `src/app/api/buckets/reclassify-displaced/route.ts` — gutted (returns 410 Gone; no longer called)
 
 **DB migration:** `drizzle/0003_broad_spot.sql` — adds `embedding vector(384)` to `buckets` table. Run `pnpm db:migrate`.
-
-## Current File Tree
-```
-src/
-  app/
-    api/
-      auth/callback/route.ts
-      auth/demo/route.ts
-      auth/google/route.ts
-      auth/signout/route.ts
-      buckets/[id]/exemplars/route.ts
-      buckets/[id]/reclassify/route.ts
-      buckets/[id]/route.ts
-      buckets/reclassify-displaced/route.ts  ← gutted (410)
-      buckets/route.ts
-      classify/route.ts
-      embed/route.ts
-      sync/route.ts
-      tier0-tier1/route.ts
-      tier2/route.ts
-      tier3/route.ts
-    globals.css
-    inbox/loading.tsx
-    inbox/page.tsx
-    layout.tsx
-    page.tsx
-  components/
-    inbox/bucket-tabs.tsx
-    inbox/classify-button.tsx
-    inbox/email-list.tsx
-    inbox/email-row.tsx
-    inbox/empty-state.tsx
-    inbox/manage-buckets-button.tsx
-    inbox/manage-buckets-panel.tsx
-    ui/button.tsx
-  fixtures/demo-threads.json
-  lib/
-    buckets/enrich-bucket.ts
-    db/index.ts
-    db/schema/ai-usage.ts
-    db/schema/buckets.ts
-    db/schema/category-exemplars.ts
-    db/schema/classifications.ts
-    db/schema/index.ts
-    db/schema/reclassification-log.ts
-    db/schema/relations.ts
-    db/schema/users.ts
-    db/seed-buckets.ts
-    db/seed-demo.ts
-    db/setup.ts
-    db/vector.ts
-    embed/gemini-embed.ts
-    embed/umap-runner.ts
-    gmail/client.ts
-    gmail/sync.ts
-    google/auth.ts
-    inbox/format-timestamp.ts
-    inbox/get-inbox-threads.ts
-    pipeline/bootstrap-exemplars.ts
-    pipeline/embed-threads.ts
-    pipeline/llm-classify.ts
-    pipeline/orchestrator.ts
-    pipeline/reclassify.ts
-    pipeline/security-scan.ts
-    pipeline/tier0-tier1.ts
-    pipeline/tier2.ts
-    pipeline/tier3.ts
-    pipeline/triage.ts
-    session.ts
-    utils/retry.ts
-  scripts/
-    embed-existing-buckets.ts
-    rename-buckets.ts
-    reseed-direct.ts
-    reseed-exemplars.ts
-```
 
 ### Post-Step 12 Patch Set B: UI Polish + Speed Fix (branch: feature/ui-polish-and-speed-fix)
 
@@ -551,6 +270,23 @@ src/
 - `computeFitTransform` extracted to graph-utils to keep email-graph.tsx under 200 lines
 - Portal tooltip escapes `overflow:hidden` container — no clipping at graph edges
 
+### Step 14: D3 Filter Panel + Graph Polish (branch: dev)
+
+**New files:**
+- `src/components/graph/filter-types.ts` — `FilterState` interface (`keyword`, `activeBucketIds: Set<number>`, `minConfidence`, `maxConfidence`, `minUrgency`, `nodeSizeMultiplier`, `textFadeZoom`) + `DEFAULT_FILTER_STATE`
+- `src/components/graph/filter-panel.tsx` — right-side classifications panel (260px); "Classifications" fixed title; collapsible Legend (border ring key + visual encoding icons), Filters (keyword search, bucket toggles, confidence/urgency sliders), Display (node size slider); reset button with `isNonDefault` gate; `scrollbar-hide` on inner scroll div; `Toggle`, `SliderRow`, `SectionHeader`, `Dot`, `EncodingIcon`, `LegendRow` sub-components all at module scope
+
+**Modified files:**
+- `src/components/graph/graph-view.tsx` — added `filterState` state; flex-row layout (graph `flex:1` + 260px panel); `ResizeObserver` on graph div only (not full parent); initial `dimensions = { width: 800, height: 600 }` fallback; `useMemo` derives sorted unique `buckets` array from nodes; `FilterPanel` wired to `filterState`
+- `src/components/graph/email-graph.tsx` — accepts `filterState` prop; SVG resize `useEffect` syncs attrs when width/height change; UMAP normalization range tightened to `[20%, 80%]`; cluster force hardcoded at `0.35`; filter effect applies opacity (0.05 faded) + stroke-opacity + badge opacity with 200ms transitions; cluster labels always `opacity: 1` (no zoom-conditional fade); main effect deps `[nodes, width, height]` rebuild simulation on resize
+- `src/lib/inbox/get-graph-data.ts` — removed `isNotNull(umapX/Y)` from WHERE clause (emails without UMAP coords now included); fallback `?? 0` for `umapX`/`umapY` in row mapping; diagnostic `console.log` reports total returned + how many were missing UMAP coords; deduplicated `and` import
+
+**Key decisions:**
+- Default bucket emails (classified by tier0/1 via domain rules, no embedding required) could have null UMAP if embedding partially failed; removing the UMAP null filter ensures they appear in the graph with D3 force spreading them from (0,0)
+- `clusterSpread` removed from FilterState entirely — hardcoded at 0.35; reduces panel complexity
+- No simulation restart for filter changes — filter effect is opacity/radius only (no drift)
+- `EncodingIcon` defined at module scope (not inside render) to satisfy react-hooks/static-components lint rule
+
 ## Current File Tree
 ```
 src/
@@ -580,6 +316,8 @@ src/
   components/
     graph/
       email-graph.tsx
+      filter-panel.tsx
+      filter-types.ts
       graph-tooltip.tsx
       graph-utils.ts
       graph-view.tsx
