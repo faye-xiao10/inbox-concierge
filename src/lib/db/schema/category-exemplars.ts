@@ -20,6 +20,7 @@ export const categoryExemplars = pgTable(
     embedding: vector('embedding', { dimensions: 384 }).notNull(),
     source: text('source').notNull(), // 'synthetic' | 'confirmed' | 'user_correction'
     weight: real('weight').notNull().default(0.5),
+    text: text('text'),
     sourceThreadId: text('source_thread_id'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },

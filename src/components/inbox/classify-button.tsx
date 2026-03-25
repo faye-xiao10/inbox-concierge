@@ -15,6 +15,8 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
   const [status, setStatus] = useState<ClassifyStatus>('idle');
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [tier3Done, setTier3Done] = useState(0);
+  const [tier3Total, setTier3Total] = useState<number | null>(null);
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -33,8 +35,13 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
         setStage(`Semantic matching ${event.current}/${event.total}...`);
         break;
       case 'tier3_progress':
+        setTier3Total(event.total);
         setProgress({ current: event.current, total: event.total });
-        setStage(`AI classifying batch ${event.batchNumber}...`);
+        break;
+      case 'classification_result':
+        if (event.tier === 3) {
+          setTier3Done((n) => n + 1);
+        }
         break;
       case 'sync_complete': setProgress(null); setStage('Analyzing emails...'); break;
       case 'embed_complete': setStage('Running security scan...'); break;
@@ -42,7 +49,7 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
       case 'tier0_complete':
       case 'tier1_complete': setStage('Semantic matching...'); break;
       case 'tier2_complete': setStage('AI classification...'); break;
-      case 'tier3_complete': setStage('Scoring urgency...'); break;
+      case 'tier3_complete': setTier3Done(0); setTier3Total(null); setStage('Scoring urgency...'); break;
       case 'triage_complete': setStage('Finishing up...'); break;
       case 'pipeline_complete':
         setMetrics(event.metrics);
@@ -59,6 +66,8 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
   async function startClassify() {
     setStatus('running');
     setProgress(null);
+    setTier3Done(0);
+    setTier3Total(null);
     setStage(isDemo ? 'Classifying demo data...' : 'Starting pipeline...');
 
     const response = await fetch('/api/classify', {
@@ -105,18 +114,26 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
   }
 
   if (status === 'running') {
+    const inTier3 = tier3Done > 0 || tier3Total !== null;
+    const stageText = inTier3
+      ? `AI classifying... ${tier3Done}${tier3Total !== null ? `/${tier3Total}` : ''}`
+      : stage;
+    const displayProgress = inTier3 && tier3Total !== null
+      ? { current: tier3Done, total: tier3Total }
+      : progress;
+
     return (
       <div className="flex flex-col items-end gap-1">
         <div className="flex items-center gap-2 body-sm" style={{ color: 'var(--text-secondary)' }}>
           <span className="inline-block w-3 h-3 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }} />
-          {stage}
+          {stageText}
         </div>
-        {progress && (
+        {displayProgress && (
           <div className="flex items-center gap-2 body-sm" style={{ color: 'var(--text-tertiary)' }}>
             <div className="w-32 h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div className="h-full rounded-full transition-all duration-300" style={{ backgroundColor: 'var(--accent-primary)', width: `${Math.round((progress.current / progress.total) * 100)}%` }} />
+              <div className="h-full rounded-full transition-all duration-300" style={{ backgroundColor: 'var(--accent-primary)', width: `${Math.round((displayProgress.current / displayProgress.total) * 100)}%` }} />
             </div>
-            {progress.current}/{progress.total}
+            {displayProgress.current}/{displayProgress.total}
           </div>
         )}
       </div>

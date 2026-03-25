@@ -8,6 +8,7 @@ import { runTier0AndTier1 } from './tier0-tier1';
 import { runTier2 } from './tier2';
 import { runTier3 } from './tier3';
 import { runTriage } from './triage';
+import { ensureExemplarsForAllBuckets } from './bootstrap-exemplars';
 
 export type PipelineMode = 'incremental' | 'full';
 
@@ -38,6 +39,9 @@ export type PipelineEvent =
   | { type: 'classification_result'; threadId: string; bucketId: number; tier: number; confidence: number }
   | { type: 'triage_complete' }
   | { type: 'pipeline_complete'; metrics: PipelineMetrics }
+  | { type: 'reclassify_complete'; movedCount: number; tier3Count: number }
+  | { type: 'bucket_enriching'; message: string }
+  | { type: 'overlap_warning'; conflictingBucketName: string; similarity: number }
   | { type: 'error'; message: string; stage: string };
 
 async function computeMetrics(userId: number, startTime: number): Promise<PipelineMetrics> {
@@ -74,12 +78,6 @@ async function resetForFullMode(userId: number): Promise<void> {
     bucketId: null, classificationTier: null, confidence: null,
     llmReasoning: null, urgencyScore: null, securityFlags: [],
   }).where(eq(classifications.userId, userId));
-
-  const bucketRows = await db.select({ id: buckets.id }).from(buckets).where(eq(buckets.userId, userId));
-  const bucketIds = bucketRows.map((b) => b.id);
-  if (bucketIds.length > 0) {
-    await db.delete(categoryExemplars).where(inArray(categoryExemplars.bucketId, bucketIds));
-  }
 }
 
 export async function runPipeline(
@@ -129,6 +127,9 @@ export async function runPipeline(
     onEvent({ type: 'tier1_complete', classifiedCount: tier01.tier1Count });
 
     if (signal?.aborted) { onEvent({ type: 'error', message: 'Pipeline aborted', stage: 'tier1' }); return; }
+
+    // Ensure all buckets have exemplars before tier 2 needs them
+    await ensureExemplarsForAllBuckets(userId);
 
     // Stage 5: Tier 2
     const tier2Result = await runTier2(userId, (curr, total) => onEvent({ type: 'tier2_progress', current: curr, total }));

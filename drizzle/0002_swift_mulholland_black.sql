@@ -1,0 +1,1 @@
+ALTER TABLE "category_exemplars" ADD COLUMN "text" text;

@@ -12,7 +12,9 @@
     "db:studio": "drizzle-kit studio",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "rename-buckets": "tsx --env-file=.env.local src/scripts/rename-buckets.ts"
+    "rename-buckets": "tsx --env-file=.env.local src/scripts/rename-buckets.ts",
+    "reseed-exemplars": "tsx --tsconfig tsconfig.json --env-file=.env.local src/scripts/reseed-exemplars.ts",
+    "reseed-direct": "tsx --tsconfig tsconfig.json --env-file=.env.local src/scripts/reseed-direct.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
