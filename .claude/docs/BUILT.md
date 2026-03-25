@@ -461,8 +461,17 @@ src/
     reseed-exemplars.ts
 ```
 
+### fix/llm-calls-metric: LLM Calls Metric Diagnosis (branch: fix/llm-calls-metric)
+
+**Investigation:** `Total AI Operations` in metrics panel always shows 1 regardless of actual API calls.
+
+**Findings:**
+- `aiUsage` insert in `llm-classify.ts` is correctly per-batch — `logUsage()` fires once per `classifyBatchWithFallback` call, which is called once per batch inside the `tier3.ts` loop. Nothing is hoisted outside.
+- Diagnostic logs added to `orchestrator.ts` (`computeMetrics`), `gemini-embed.ts`, and `llm-classify.ts` to capture raw `aiUsage` query result, `llmRows` count value, `runStart` timestamp, and per-insert timestamps — then removed after confirming insert structure.
+- Root cause not yet isolated. Likely candidates: `gte(aiUsage.createdAt, runStart)` timestamp comparison issue with Neon HTTP driver, or `count()` Drizzle aggregate returning unexpected value. Requires a live classify run with logs to confirm.
+
 ## Known Issues
-(none)
+- `Total AI Operations` metric always shows 1 — insert structure confirmed correct; root cause (filter vs. aggregation) pending live run confirmation
 
 ## Notes
 - Update this file after completing each step in PLAN.md
