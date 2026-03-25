@@ -588,9 +588,31 @@ src/
     check-exemplars.ts
     embed-existing-buckets.ts
     rename-buckets.ts
+    reseed-demo.ts
     reseed-direct.ts
     reseed-exemplars.ts
 ```
+
+### Demo mode polish (branch: dev)
+
+**classify-button.tsx:**
+- Replaced click-to-toggle nudge with CSS hover tooltip above the button
+- `onMouseEnter`/`onMouseLeave` drives `demoTooltip` state; tooltip is absolutely positioned, `var(--bg-elevated)` card with border + shadow; gold anchor link "Connect your Gmail to classify your real inbox →"
+- Button stays `opacity: 0.5 / cursor: not-allowed`; removed `showDemoNudge` state
+
+**manage-buckets-panel.tsx:**
+- Demo lock banner added below panel heading: "🔒 Connect your Gmail to create custom buckets →"; new bucket form already gated by `{!isDemo}`
+
+**orchestrator.ts:**
+- Reverted demo reset guard (`resetForFullMode` signature back to `(userId: number)`) — redundant since demo users can't trigger classify
+
+**seed-demo.ts:**
+- Added `console.warn` when `bucketMap.get(bucketName)` returns null, logging available bucket names for diagnosis
+
+**src/scripts/reseed-demo.ts (new):**
+- Finds demo user by email `demo@inboxconcierge.app`, deletes all their classifications, re-runs `seedDemoUser(userId, bucketRows)` fresh
+- `package.json`: added `"reseed-demo"` script
+- Ran successfully: deleted 20 rows, re-seeded 20 with correct bucketIds, no name-mismatch warnings
 
 ## Known Issues
 - `Total AI Operations` metric always shows 1 — insert structure confirmed correct; root cause (filter vs. aggregation) pending live run confirmation

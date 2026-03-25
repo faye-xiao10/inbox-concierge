@@ -18,6 +18,10 @@ function toInsertRow(
   const { bucketName, timestamp, ...rest } = thread;
   const bucketId = bucketMap.get(bucketName) ?? null;
 
+  if (bucketId === null) {
+    console.warn(`[seed-demo] No bucket found for name "${bucketName}" (threadId: ${thread.threadId}). Available: ${[...bucketMap.keys()].join(', ')}`);
+  }
+
   return {
     ...rest,
     userId,

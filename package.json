@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "rename-buckets": "tsx --env-file=.env.local src/scripts/rename-buckets.ts",
     "reseed-exemplars": "tsx --tsconfig tsconfig.json --env-file=.env.local src/scripts/reseed-exemplars.ts",
-    "reseed-direct": "tsx --tsconfig tsconfig.json --env-file=.env.local src/scripts/reseed-direct.ts"
+    "reseed-direct": "tsx --tsconfig tsconfig.json --env-file=.env.local src/scripts/reseed-direct.ts",
+    "reseed-demo": "tsx --tsconfig tsconfig.json --env-file=.env.local src/scripts/reseed-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

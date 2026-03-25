@@ -170,6 +170,14 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
               <button className="btn-ghost btn-sm rounded-full cursor-pointer" onClick={onClose} style={{ fontSize: 18, lineHeight: 1, width: 28, height: 28, padding: 0 }}>×</button>
             </div>
 
+            {/* Demo lock banner */}
+            {isDemo && (
+              <div style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-default)', padding: '10px 20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                🔒 Connect your Gmail to create custom buckets&nbsp;
+                <a href="/api/auth/google" style={{ color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 500 }}>→</a>
+              </div>
+            )}
+
             {/* New bucket form — top section */}
             {!isDemo && (
               <div className="px-5 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-default)' }}>
