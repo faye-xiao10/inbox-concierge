@@ -56,14 +56,16 @@ const classifyTool = {
   },
 };
 
-function buildSystemPrompt(buckets: BucketContext[]): string {
+function buildSystemPrompt(buckets: BucketContext[], prefix?: string): string {
   const bucketList = buckets
     .map((b) => `ID ${b.id}: ${b.name} — ${b.enrichedDescription ?? b.description ?? b.name}`)
     .join('\n');
   return (
+    (prefix ? prefix.trim() + '\n\n' : '') +
     `You are an email classifier. Classify each email into exactly one of the provided buckets.\n\n` +
     `Buckets:\n${bucketList}\n\n` +
     `If an email has security flags (phishing, suspicious_url, etc.), note them in reasoning but still assign the most appropriate bucket.\n` +
+    `The "Direct" bucket is reserved for emails requiring personal action or a direct reply. It is sticky — only classify an email as Direct if you are highly confident it belongs there. Do not move emails away from Direct unless clearly wrong.\n` +
     `Confidence should reflect genuine certainty: 0.5-0.6 for ambiguous cases, 0.8-0.95 for clear ones.`
   );
 }
@@ -105,14 +107,15 @@ async function callClaude(
   batch: EmailBatchItem[],
   buckets: BucketContext[],
   userId: number,
+  systemPromptPrefix?: string,
 ): Promise<LLMClassification[]> {
   const client = new Anthropic();
   const response = await withRetry(
     () =>
       client.messages.create({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1024,
-        system: buildSystemPrompt(buckets),
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system: buildSystemPrompt(buckets, systemPromptPrefix),
         messages: [{ role: 'user', content: buildUserPrompt(batch) }],
         tools: [classifyTool],
         tool_choice: { type: 'tool', name: 'classify_emails' },
@@ -120,19 +123,23 @@ async function callClaude(
     2,
   );
 
-  await logUsage(userId, 'claude-sonnet-4-5', response.usage.input_tokens, response.usage.output_tokens, 3, 15);
+  await logUsage(userId, 'claude-sonnet-4-6', response.usage.input_tokens, response.usage.output_tokens, 3, 15);
 
   const toolBlock = response.content.find((b) => b.type === 'tool_use');
   if (!toolBlock || toolBlock.type !== 'tool_use') throw new Error('Claude returned no tool_use block');
-  const input = toolBlock.input as { classifications: LLMClassification[] };
-  if (!Array.isArray(input.classifications)) throw new Error('Claude tool input missing classifications array');
-  return validateResults(input.classifications, batch, buckets);
+  const input = toolBlock.input as Record<string, unknown>;
+  if (!input || !Array.isArray(input.classifications)) {
+    console.error('Claude unexpected tool input shape:', JSON.stringify(input));
+    return [];
+  }
+  return validateResults(input.classifications as LLMClassification[], batch, buckets);
 }
 
 async function callGemini(
   batch: EmailBatchItem[],
   buckets: BucketContext[],
   userId: number,
+  systemPromptPrefix?: string,
 ): Promise<LLMClassification[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
@@ -159,18 +166,18 @@ async function callGemini(
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     tools: [{ functionDeclarations: [{ name: 'classify_emails', description: 'Classify each email into exactly one bucket.', parameters }] }],
   });
 
-  const prompt = `${buildSystemPrompt(buckets)}\n\n${buildUserPrompt(batch)}`;
+  const prompt = `${buildSystemPrompt(buckets, systemPromptPrefix)}\n\n${buildUserPrompt(batch)}`;
   const result = await withRetry(
     () => model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.ANY, allowedFunctionNames: ['classify_emails'] } } }),
     2,
   );
 
   const usage = result.response.usageMetadata;
-  await logUsage(userId, 'gemini-2.0-flash', usage?.promptTokenCount ?? 0, usage?.candidatesTokenCount ?? null, 0.10, 0.40);
+  await logUsage(userId, 'gemini-2.5-flash', usage?.promptTokenCount ?? 0, usage?.candidatesTokenCount ?? null, 0.10, 0.40);
 
   const calls = result.response.functionCalls();
   if (!calls || calls.length === 0) throw new Error('Gemini returned no function calls');
@@ -183,13 +190,14 @@ export async function classifyBatchWithFallback(
   batch: EmailBatchItem[],
   buckets: BucketContext[],
   userId: number,
+  systemPromptPrefix?: string,
 ): Promise<LLMClassification[]> {
   try {
-    return await callClaude(batch, buckets, userId);
+    return await callClaude(batch, buckets, userId, systemPromptPrefix);
   } catch (claudeError) {
     console.error('Claude classification failed, trying Gemini:', claudeError);
     try {
-      return await callGemini(batch, buckets, userId);
+      return await callGemini(batch, buckets, userId, systemPromptPrefix);
     } catch (geminiError) {
       console.error('Gemini classification failed, returning empty:', geminiError);
       return [];

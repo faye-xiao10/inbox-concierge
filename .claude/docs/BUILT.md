@@ -264,6 +264,118 @@ src/
     utils/retry.ts
 ```
 
+### Step 12: Custom Buckets + Reclassification (branch: feature/step-12-custom-buckets)
+
+**Core feature:** Users can create, edit, and delete custom buckets. On creation, the bucket is enriched via LLM (Claude generates an enriched description, boundary notes, and 3-5 full `[SUBJECT]/[FROM]/[PREVIEW]` exemplar emails). Reclassification runs as a background SSE stream — displaced emails are re-homed when a bucket is deleted.
+
+**New files:**
+- `src/lib/buckets/enrich-bucket.ts` — Claude enrichment + centroid-cosine overlap detection (>0.8 similarity → overlap_warning); generates exemplar texts in `[SUBJECT] [FROM] [PREVIEW]` format for accurate semantic matching; uses `claude-sonnet-4-6`
+- `src/lib/pipeline/reclassify.ts` — two exported functions: `runReclassification` (post-create: Tier 2 semantic + Tier 3 LLM vs a specific new bucket) and `runReclassifyDisplaced` (post-delete: best-bucket-across-all for null-bucket emails); both use bulk exemplar fetch (one DB query, in-memory cosine) — zero per-email DB calls
+- `src/app/api/buckets/route.ts` — GET list + fast POST create (validate + insert only, no enrichment; returns immediately in <100ms)
+- `src/app/api/buckets/[id]/route.ts` — PATCH name/desc (no re-enrichment); DELETE (null displaced emails, cleanup reclassificationLog, cascade-delete exemplars, return displacedThreadIds)
+- `src/app/api/buckets/[id]/reclassify/route.ts` — SSE stream: enriches bucket (Claude + embedding), handles overlap_warning, updates bucket row + inserts exemplars, runs runReclassification
+- `src/app/api/buckets/[id]/exemplars/route.ts` — GET exemplars with non-null text for inline edit display
+- `src/app/api/buckets/reclassify-displaced/route.ts` — SSE stream: calls runReclassifyDisplaced for post-delete reclassification
+- `src/components/inbox/manage-buckets-panel.tsx` — slide-out panel: new bucket form, inline edit (name/desc + exemplar chips), two-step delete confirmation, toast; SSE-free (all async work owned by BucketTabs)
+- `src/components/inbox/manage-buckets-button.tsx` — trigger button for panel
+- `src/scripts/reseed-exemplars.ts` — re-seeds all missing bucket exemplars for real user
+- `src/scripts/reseed-direct.ts` — deletes + re-seeds Direct/Updates exemplars with improved texts
+
+**Modified files:**
+- `src/lib/db/schema/category-exemplars.ts` — added nullable `text` column (exemplar source text)
+- `src/lib/pipeline/bootstrap-exemplars.ts` — Direct exemplar texts hardcoded (8 hand-crafted `[SUBJECT]/[FROM]/[PREVIEW]` texts, weight 0.8); Updates uses platform notification patterns; `ensureExemplarsForAllBuckets` exported; SYNTHETIC_EXEMPLARS keys updated to "Direct"/"Updates"
+- `src/lib/pipeline/llm-classify.ts` — `claude-sonnet-4-6`, `max_tokens: 4096`, defensive tool input parsing (bad shape → `console.error` + `return []` instead of throw), optional `systemPromptPrefix` param threaded through Claude + Gemini calls, Direct-is-sticky rule in base system prompt, Gemini model → `gemini-2.5-flash`
+- `src/lib/pipeline/orchestrator.ts` — `resetForFullMode` no longer deletes exemplars; `ensureExemplarsForAllBuckets` called before Tier 2; added `overlap_warning` and `bucket_enriching` to PipelineEvent union
+- `src/components/inbox/bucket-tabs.tsx` — owns all SSE reading (creation + displaced); overlap warning banner; creation progress + done banners; `handleBucketDeleted` removes tab immediately + starts displaced SSE; `startDisplacedSSE` uses `/api/buckets/reclassify-displaced`
+- `src/components/inbox/classify-button.tsx` — tier3 progress counter with isWaitingForLLM state
+- `src/app/inbox/page.tsx` — passes buckets to BucketTabs
+- `drizzle/0002_swift_mulholland_black.sql` — migration for text column on category_exemplars
+
+**Key architectural decisions:**
+- POST create returns immediately (<100ms); all LLM work happens in SSE stream so user sees feedback within 300ms
+- Overlap warning surfaces as inline banner in BucketTabs (visible even when panel is closed); "Create anyway" restarts SSE with `force=true`
+- Reclassification uses bulk exemplar fetch (one query → in-memory Map) instead of per-email DB queries — evaluated 241 emails in ~50ms vs minutes
+- Tier 3 candidate gates: create path `margin > 0.05 && newSim > 0.50`; delete path `sim > 0.50`; anything below skipped (not forced into LLM)
+- Direct bucket is sticky: higher thresholds (0.80/0.30) to move emails out of Direct
+- Reclassify context injected into Tier 3 LLM prompt for create path: tells Claude about the new bucket so it moves emails that clearly match
+
+**DB migration:** `drizzle/0002_swift_mulholland_black.sql` — run `pnpm db:migrate` to add `text` column to `category_exemplars`.
+
+## Current File Tree
+```
+src/
+  app/
+    api/
+      auth/callback/route.ts
+      auth/demo/route.ts
+      auth/google/route.ts
+      auth/signout/route.ts
+      buckets/[id]/exemplars/route.ts
+      buckets/[id]/reclassify/route.ts
+      buckets/[id]/route.ts
+      buckets/reclassify-displaced/route.ts
+      buckets/route.ts
+      classify/route.ts
+      embed/route.ts
+      sync/route.ts
+      tier0-tier1/route.ts
+      tier2/route.ts
+      tier3/route.ts
+    globals.css
+    inbox/loading.tsx
+    inbox/page.tsx
+    layout.tsx
+    page.tsx
+  components/
+    inbox/bucket-tabs.tsx
+    inbox/classify-button.tsx
+    inbox/email-list.tsx
+    inbox/email-row.tsx
+    inbox/empty-state.tsx
+    inbox/manage-buckets-button.tsx
+    inbox/manage-buckets-panel.tsx
+    ui/button.tsx
+  fixtures/demo-threads.json
+  lib/
+    buckets/enrich-bucket.ts
+    db/index.ts
+    db/schema/ai-usage.ts
+    db/schema/buckets.ts
+    db/schema/category-exemplars.ts
+    db/schema/classifications.ts
+    db/schema/index.ts
+    db/schema/reclassification-log.ts
+    db/schema/relations.ts
+    db/schema/users.ts
+    db/seed-buckets.ts
+    db/seed-demo.ts
+    db/setup.ts
+    db/vector.ts
+    embed/gemini-embed.ts
+    embed/umap-runner.ts
+    gmail/client.ts
+    gmail/sync.ts
+    google/auth.ts
+    inbox/format-timestamp.ts
+    inbox/get-inbox-threads.ts
+    pipeline/bootstrap-exemplars.ts
+    pipeline/embed-threads.ts
+    pipeline/llm-classify.ts
+    pipeline/orchestrator.ts
+    pipeline/reclassify.ts
+    pipeline/security-scan.ts
+    pipeline/tier0-tier1.ts
+    pipeline/tier2.ts
+    pipeline/tier3.ts
+    pipeline/triage.ts
+    session.ts
+    utils/retry.ts
+  scripts/
+    rename-buckets.ts
+    reseed-direct.ts
+    reseed-exemplars.ts
+```
+
 ## Known Issues
 (none)
 
