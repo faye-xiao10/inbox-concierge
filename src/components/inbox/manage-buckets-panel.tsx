@@ -160,12 +160,12 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25 }}
             className="fixed right-0 top-0 bottom-0 z-50 flex flex-col"
-            style={{ width: 400, background: 'var(--bg-elevated)', boxShadow: '0 4px 24px rgba(59,50,38,0.12)', borderLeft: '1px solid rgba(221,210,192,0.4)' }}
+            style={{ width: 400, background: 'var(--bg-elevated)', boxShadow: '0 8px 40px rgba(59,50,38,0.14), 0 2px 8px rgba(59,50,38,0.06)', borderLeft: '1px solid rgba(221,210,192,0.25)' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-default)' }}>
-              <span className="heading-sm" style={{ color: 'var(--text-primary)' }}>Manage Buckets</span>
-              <button className="btn-ghost btn-sm rounded-full" onClick={onClose} style={{ fontSize: 18, lineHeight: 1, width: 28, height: 28, padding: 0 }}>×</button>
+              <span className="heading-md" style={{ color: 'var(--text-primary)' }}>Manage Buckets</span>
+              <button className="btn-ghost btn-sm rounded-full cursor-pointer" onClick={onClose} style={{ fontSize: 18, lineHeight: 1, width: 28, height: 28, padding: 0 }}>×</button>
             </div>
 
             {/* New bucket form — top section */}
@@ -232,6 +232,9 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
                         )}
                         {!exemplarsLoading && exemplars.length > 0 && (
                           <div className="flex flex-col gap-1 mb-2">
+                            <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                              Examples
+                            </p>
                             {exemplars.map((ex) => {
                               const isExpanded = expandedExemplarIds.has(ex.id);
                               return (
@@ -246,9 +249,15 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
                                   className="w-full text-left px-2 py-1 rounded cursor-pointer"
                                   style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 11, border: '1px solid var(--border-default)', transition: 'background 150ms ease' }}
                                 >
-                                  <span style={isExpanded ? {} : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' }}>
-                                    {ex.text}
-                                  </span>
+                                  {isExpanded ? (
+                                    <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxWidth: '100%', display: 'block' }}>
+                                      {ex.text ?? '(no text)'}
+                                    </span>
+                                  ) : (
+                                    <span className="block truncate">
+                                      {ex.text ?? '(no text)'}
+                                    </span>
+                                  )}
                                 </button>
                               );
                             })}
@@ -310,22 +319,29 @@ export default function ManageBucketsPanel({ isOpen, onClose, buckets: initialBu
                       </div>
                     ) : (
                       /* Idle row */
-                      <div className="flex items-center justify-between py-2 px-1 rounded" style={{ transition: 'background 150ms ease' }}>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: bucket.color }} />
-                          <span className="body-sm truncate" style={{ color: 'var(--text-primary)' }}>{bucket.name}</span>
-                        </div>
-                        {!DEFAULT_BUCKET_NAMES.has(bucket.name) && !isDemo && (
-                          <button
-                            className="btn-ghost btn-sm flex-shrink-0"
-                            style={{ color: 'var(--text-tertiary)', padding: '2px 6px', fontSize: 14 }}
-                            onClick={() => openEdit(bucket)}
-                            title="Edit bucket"
+                      (() => {
+                        const isEditable = !DEFAULT_BUCKET_NAMES.has(bucket.name) && !isDemo;
+                        return (
+                          <div
+                            className={`flex items-center justify-between py-2 px-1 rounded transition-colors duration-150${isEditable ? ' cursor-pointer hover:bg-secondary' : ''}`}
+                            onClick={isEditable ? () => openEdit(bucket) : undefined}
                           >
-                            ✎
-                          </button>
-                        )}
-                      </div>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: bucket.color }} />
+                              <span className="body-sm truncate" style={{ color: 'var(--text-primary)' }}>{bucket.name}</span>
+                            </div>
+                            {isEditable && (
+                              <span
+                                className="flex-shrink-0"
+                                style={{ color: 'var(--text-tertiary)', padding: '2px 6px', fontSize: 14 }}
+                                title="Edit bucket"
+                              >
+                                ✎
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
                 ))}

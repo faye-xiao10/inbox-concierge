@@ -188,7 +188,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
 
       <div className="flex items-center mb-1">
         <div
-          className="flex gap-1 overflow-x-auto scrollbar-none flex-1"
+          className="flex gap-1 overflow-x-auto scrollbar-hide flex-1"
           style={{ borderBottom: '1px solid var(--border-default)' }}
         >
           {buckets.map((bucket) => {
@@ -198,7 +198,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
               <button
                 key={bucket.id}
                 onClick={() => setActiveId(bucket.id)}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap transition-colors duration-150 cursor-pointer"
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap transition-colors duration-150 cursor-pointer rounded-t${!isActive ? ' hover:bg-secondary' : ''}`}
                 style={{
                   color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
                   borderBottom: isActive ? `2px solid ${bucket.color}` : '2px solid transparent',
@@ -223,7 +223,7 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo }:
           {uncategorizedCount > 0 && (
             <button
               onClick={() => setActiveId(UNCATEGORIZED_ID)}
-              className="flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap transition-colors duration-150 cursor-pointer"
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap transition-colors duration-150 cursor-pointer rounded-t${activeId !== UNCATEGORIZED_ID ? ' hover:bg-secondary' : ''}`}
               style={{
                 color: activeId === UNCATEGORIZED_ID ? 'var(--text-primary)' : 'var(--text-secondary)',
                 borderBottom: activeId === UNCATEGORIZED_ID ? '2px solid var(--text-tertiary)' : '2px solid transparent',
