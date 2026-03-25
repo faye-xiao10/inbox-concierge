@@ -23,6 +23,14 @@ interface Toast {
 export default function GraphView({ isDemo, metrics = null, isRunning = false }: GraphViewProps) {
   const [nodes, setNodes] = useState<EmailNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const [filterState, setFilterState] = useState<FilterState>(DEFAULT_FILTER_STATE);
   const [toast, setToast] = useState<Toast | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -104,6 +112,28 @@ export default function GraphView({ isDemo, metrics = null, isRunning = false }:
     } catch {
       showToast('Move failed — email stayed in original bucket');
     }
+  }
+
+  if (isMobile) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-3 rounded-lg"
+        style={{
+          height: 200,
+          border: '1px solid var(--border-default)',
+          background: 'var(--bg-elevated)',
+          color: 'var(--text-secondary)',
+        }}
+      >
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <rect x="5" y="2" width="14" height="20" rx="2" />
+          <line x1="12" y1="18" x2="12" y2="18.01" strokeWidth="2" />
+        </svg>
+        <p className="body-sm text-center" style={{ maxWidth: 240 }}>
+          Graph view requires a larger screen. Switch to list view on mobile.
+        </p>
+      </div>
+    );
   }
 
   if (loading) {

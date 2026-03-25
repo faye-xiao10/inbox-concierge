@@ -1,5 +1,6 @@
 'use client';
 
+import type React from 'react';
 import type { PipelineMetrics } from '@/lib/pipeline/orchestrator';
 
 interface MetricsPanelProps {
@@ -7,7 +8,14 @@ interface MetricsPanelProps {
   isRunning: boolean;
 }
 
-function Card({ value, label, subtext, pulse }: any) {
+interface CardProps {
+  value: React.ReactNode;
+  label: string;
+  subtext: string;
+  pulse?: boolean;
+}
+
+function Card({ value, label, subtext, pulse }: CardProps) {
   return (
     <div style={{
       background: 'var(--bg-elevated)',
@@ -119,7 +127,15 @@ export default function MetricsPanel({ metrics, isRunning }: MetricsPanelProps) 
   );
 }
 
-function TierRow({ label, code, count, color, isBold }: any) {
+interface TierRowProps {
+  label: string;
+  code: string;
+  count: number | string;
+  color: string;
+  isBold?: boolean;
+}
+
+function TierRow({ label, code, count, color, isBold }: TierRowProps) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color, fontWeight: isBold ? 800 : 500 }}>
       <span><strong style={{ opacity: isBold ? 1 : 0.5, marginRight: 6 }}>{code}</strong> {label}</span>
@@ -128,7 +144,13 @@ function TierRow({ label, code, count, color, isBold }: any) {
   );
 }
 
-function MethodologyItem({ code, title, desc }: any) {
+interface MethodologyItemProps {
+  code: string;
+  title: string;
+  desc: string;
+}
+
+function MethodologyItem({ code, title, desc }: MethodologyItemProps) {
   return (
     <div style={{ fontSize: '13px', lineHeight: 1.5 }}>
       <div style={{ color: 'var(--accent-primary)', fontWeight: 800, marginBottom: 2 }}> {/* Matches T3 Color & Boldness */}

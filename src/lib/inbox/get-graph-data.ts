@@ -55,13 +55,6 @@ export async function getGraphData(userId: number): Promise<EmailNode[]> {
       )
       .orderBy(desc(classifications.timestamp));
 
-    const noUmap = rows.filter((r) => r.umapX === null).length;
-    if (noUmap > 0) {
-      console.log(`[graph-data] userId=${userId}: ${rows.length} emails returned, ${noUmap} missing UMAP coords (placed at origin)`);
-    } else {
-      console.log(`[graph-data] userId=${userId}: ${rows.length} emails returned, all have UMAP coords`);
-    }
-
     return rows.map((row) => ({
       threadId: row.threadId,
       subject: row.subject ?? '',

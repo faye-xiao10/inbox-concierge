@@ -148,7 +148,7 @@ export async function ensureExemplarsForAllBuckets(userId: number): Promise<void
     const weight = isDirect ? 0.8 : 0.5;
 
     if (!texts || texts.length === 0) {
-      console.log(`ensureExemplars: no synthetic template for "${bucket.name}", skipping`);
+      console.warn(`ensureExemplars: no synthetic template for "${bucket.name}", skipping`);
       continue;
     }
 
@@ -166,7 +166,7 @@ export async function ensureExemplarsForAllBuckets(userId: number): Promise<void
         ),
       );
       const created = results.filter((r) => r.status === 'fulfilled').length;
-      console.log(`ensureExemplars: seeded ${created} exemplars for "${bucket.name}" (weight ${weight})`);
+      console.warn(`ensureExemplars: seeded ${created} exemplars for "${bucket.name}" (weight ${weight})`);
     } catch (err) {
       console.error(`ensureExemplars: failed for "${bucket.name}":`, err);
     }

@@ -60,17 +60,9 @@ export default function BucketTabs({ threads, buckets: initialBuckets, isDemo, a
   const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const classifyButtonRef = useRef<ClassifyButtonHandle>(null);
 
-  // useEffect(() => {
-  //   if (!autoClassify) return;
-  //   const t = setTimeout(() => classifyButtonRef.current?.startClassify(), 500);
-  //   return () => clearTimeout(t);
-  // }, [autoClassify]);
-
   useEffect(() => {
     if (!autoClassify) return;
-    console.log('[autoClassify] fired, ref:', classifyButtonRef.current);
     const t = setTimeout(() => {
-      console.log('[autoClassify] 500ms elapsed, ref:', classifyButtonRef.current);
       classifyButtonRef.current?.startClassify();
     }, 500);
     return () => clearTimeout(t);
