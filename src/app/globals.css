@@ -170,3 +170,56 @@ body {
   font-weight: 400;
   color: var(--text-tertiary);
 }
+
+/* ─── Button utilities ───────────────────────────────────────────────────────── */
+
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  select: none;
+  transition: background-color 150ms ease, color 150ms ease;
+  background-color: var(--accent-primary);
+  color: #fff;
+  &:hover:not(:disabled) { background-color: var(--accent-hover); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+@utility btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  select: none;
+  transition: background-color 150ms ease, color 150ms ease;
+  background-color: transparent;
+  color: var(--text-secondary);
+  &:hover:not(:disabled) { background-color: var(--bg-secondary); color: var(--text-primary); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+@utility btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+@utility btn-md {
+  padding: 8px 14px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* ─── Scrollbar utilities ────────────────────────────────────────────────────── */
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}

@@ -1,6 +1,6 @@
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { classifications, categoryExemplars, buckets, reclassificationLog } from '@/lib/db/schema';
+import { classifications, buckets } from '@/lib/db/schema';
 import { classifyBatchWithFallback, type EmailBatchItem, type BucketContext } from './llm-classify';
 import type { PipelineEvent } from './orchestrator';
 
@@ -10,28 +10,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0, magA = 0, magB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    magA += a[i] * a[i];
-    magB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
-}
-
-function bestSim(embedding: number[], exemplarsByBucket: Map<number, number[][]>, bucketId: number): number {
-  const exemplars = exemplarsByBucket.get(bucketId);
-  if (!exemplars || exemplars.length === 0) return 0;
-  let best = 0;
-  for (const ex of exemplars) {
-    const sim = cosineSimilarity(embedding, ex);
-    if (sim > best) best = sim;
-  }
-  return best;
-}
-
-type EmailRow = {
+type CandidateRow = {
   id: number;
   threadId: string;
   subject: string;
@@ -40,8 +19,7 @@ type EmailRow = {
   snippet: string;
   securityFlags: string[];
   bucketId: number | null;
-  embedding: unknown;
-  confidence: number | null;
+  newDist: number;
 };
 
 export async function runReclassification(
@@ -49,124 +27,86 @@ export async function runReclassification(
   newBucketId: number,
   onEvent: (event: PipelineEvent) => void,
 ): Promise<void> {
-  const emails = await db
-    .select({
-      id: classifications.id,
-      threadId: classifications.threadId,
-      subject: classifications.subject,
-      senderName: classifications.senderName,
-      senderEmail: classifications.senderEmail,
-      snippet: classifications.snippet,
-      securityFlags: classifications.securityFlags,
-      bucketId: classifications.bucketId,
-      embedding: classifications.embedding,
-      confidence: classifications.confidence,
-    })
-    .from(classifications)
-    .where(and(eq(classifications.userId, userId), isNotNull(classifications.embedding)));
+  // Fetch the new bucket's embedding (set by POST handler before SSE starts)
+  const [bucketRow] = await db
+    .select({ embedding: buckets.embedding })
+    .from(buckets)
+    .where(eq(buckets.id, newBucketId));
 
+  if (!bucketRow?.embedding) throw new Error('Bucket has no embedding — cannot reclassify');
+
+  const vectorStr = `[${bucketRow.embedding.join(',')}]`;
+
+  // Single SQL query: find all emails closer to the new bucket than their current bucket
+  const result = await db.execute(sql`
+    SELECT
+      c.id,
+      c.thread_id       AS "threadId",
+      c.subject,
+      c.sender_name     AS "senderName",
+      c.sender_email    AS "senderEmail",
+      c.snippet,
+      c.security_flags  AS "securityFlags",
+      c.bucket_id       AS "bucketId",
+      (c.embedding <=> ${vectorStr}::vector) AS "newDist"
+    FROM ${classifications} c
+    JOIN ${buckets} cb ON cb.id = c.bucket_id
+    WHERE c.user_id = ${userId}
+      AND c.embedding IS NOT NULL
+      AND cb.embedding IS NOT NULL
+      AND c.bucket_id != ${newBucketId}
+      AND (c.embedding <=> ${vectorStr}::vector) < (c.embedding <=> cb.embedding)
+  `);
+
+  const rows = (result.rows as CandidateRow[]).map((r) => ({
+    ...r,
+    id: Number(r.id),
+    newDist: Number(r.newDist),
+    securityFlags: Array.isArray(r.securityFlags) ? r.securityFlags : [],
+  }));
+
+  // Split by distance: < 0.25 → tier 2 direct, 0.25–0.35 → tier 3 LLM, >= 0.35 skip
+  const tier2Rows = rows.filter((r) => r.newDist < 0.25);
+  const tier3Rows = rows.filter((r) => r.newDist >= 0.25 && r.newDist < 0.35);
+
+  console.log(`[reclassify] candidates: tier2=${tier2Rows.length} tier3=${tier3Rows.length} skipped=${rows.length - tier2Rows.length - tier3Rows.length}`);
+
+  let movedCount = 0;
+
+  // Tier 2: batch writes
+  const writeOps = tier2Rows.map((r) => {
+    const confidence = 1 - r.newDist;
+    onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: newBucketId, tier: 2, confidence });
+    movedCount++;
+    return db.update(classifications)
+      .set({ bucketId: newBucketId, classificationTier: 2, confidence })
+      .where(eq(classifications.id, r.id));
+  });
+  await Promise.allSettled(writeOps);
+
+  // Fetch bucket contexts for Tier 3
   const bucketRows = await db
     .select({ id: buckets.id, name: buckets.name, description: buckets.description, enrichedDescription: buckets.enrichedDescription })
     .from(buckets)
     .where(eq(buckets.userId, userId));
 
-  // Bulk-fetch all exemplars for this user once — no per-email DB calls
-  const exemplarRows = await db
-    .select({
-      bucketId: categoryExemplars.bucketId,
-      embedding: categoryExemplars.embedding,
-    })
-    .from(categoryExemplars)
-    .innerJoin(buckets, eq(categoryExemplars.bucketId, buckets.id))
-    .where(eq(buckets.userId, userId));
-
-  // Build in-memory index: bucketId → list of embedding vectors
-  const exemplarsByBucket = new Map<number, number[][]>();
-  for (const row of exemplarRows) {
-    if (!Array.isArray(row.embedding)) continue;
-    const list = exemplarsByBucket.get(row.bucketId) ?? [];
-    list.push(row.embedding as number[]);
-    exemplarsByBucket.set(row.bucketId, list);
-  }
-
   const bucketContexts: BucketContext[] = bucketRows;
-  const directBucketId = bucketRows.find((b) => b.name === 'Direct')?.id ?? null;
-  const newBucketRow = bucketRows.find((b) => b.id === newBucketId);
-  const newBucketName = newBucketRow?.name ?? '';
-  const newBucketDescription = newBucketRow?.enrichedDescription ?? newBucketRow?.description ?? '';
-  const isNewBucketDirect = newBucketId === directBucketId;
+  const newBucketMeta = bucketRows.find((b) => b.id === newBucketId);
+  const reclassifyContext = newBucketMeta
+    ? `The user has just created a new bucket called "${newBucketMeta.name}" with this description:\n"${newBucketMeta.enrichedDescription ?? newBucketMeta.description ?? ''}"\n\nYou are evaluating whether emails currently in other buckets should move to this new bucket. Be willing to move emails that clearly match the new bucket's purpose.`
+    : undefined;
 
-  const bucketNameById = Object.fromEntries(bucketRows.map((b) => [b.id, b.name]));
-
-  let movedCount = 0;
+  // Tier 3: LLM batches (sequential — rate limits)
   let tier3Count = 0;
-  const tier3Candidates: EmailRow[] = [];
-
-  const t0 = Date.now();
-
-  // Evaluate emails in batches of 20 using in-memory similarity — zero DB calls per email
-  for (const batch of chunk(emails as EmailRow[], 20)) {
-    const writeOps: Promise<unknown>[] = [];
-
-    for (const email of batch) {
-      if (!Array.isArray(email.embedding) || email.bucketId === newBucketId) continue;
-
-      const newSim = bestSim(email.embedding as number[], exemplarsByBucket, newBucketId);
-      const currentSim = email.bucketId !== null
-        ? bestSim(email.embedding as number[], exemplarsByBucket, email.bucketId)
-        : 0;
-      const margin = newSim - currentSim;
-
-      const currentBucketName = email.bucketId !== null ? (bucketNameById[email.bucketId] ?? null) : null;
-      const isCurrentlyDirect = currentBucketName === 'Direct';
-
-      const requiredConfidence = isCurrentlyDirect ? 0.80 : 0.65;
-      const requiredMargin = isCurrentlyDirect ? 0.30 : 0.08;
-      const tier3Threshold = isNewBucketDirect ? 0.80 : 0.55;
-
-      if (newSim > requiredConfidence && margin > requiredMargin) {
-        writeOps.push(
-          db.update(classifications)
-            .set({ bucketId: newBucketId, classificationTier: 2, confidence: newSim })
-            .where(eq(classifications.id, email.id)),
-        );
-        if (email.bucketId) {
-          writeOps.push(
-            db.insert(reclassificationLog).values({
-              classificationId: email.id,
-              fromBucketId: email.bucketId,
-              toBucketId: newBucketId,
-              source: 'custom_bucket',
-            }),
-          );
-        }
-        onEvent({ type: 'classification_result', threadId: email.threadId, bucketId: newBucketId, tier: 2, confidence: newSim });
-        movedCount++;
-      } else if (margin > 0.05 && newSim > 0.50 && !isCurrentlyDirect) {
-        tier3Candidates.push(email);
-      }
-    }
-
-    await Promise.allSettled(writeOps);
-  }
-
-  console.log(`[reclassify] evaluated ${emails.length} emails in ${Date.now() - t0}ms`);
-  console.log(`[reclassify] tier3 candidates: ${tier3Candidates.length} of ${emails.length}`);
-
-  // Tier 3: sequential batches (LLM rate limits)
-  const batches = chunk(tier3Candidates, 12);
+  const batches = chunk(tier3Rows, 12);
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    onEvent({ type: 'tier3_progress', current: (i + 1) * batch.length, total: tier3Candidates.length, batchNumber: i + 1 });
+    onEvent({ type: 'tier3_progress', current: (i + 1) * batch.length, total: tier3Rows.length, batchNumber: i + 1 });
 
     const batchItems: EmailBatchItem[] = batch.map((c) => ({
       threadId: c.threadId, subject: c.subject, senderName: c.senderName,
       senderEmail: c.senderEmail, snippet: c.snippet, securityFlags: c.securityFlags,
     }));
-
-    const reclassifyContext = newBucketName
-      ? `The user has just created a new bucket called "${newBucketName}" with this description:\n"${newBucketDescription}"\n\nYou are evaluating whether emails currently in other buckets should move to this new bucket. Be willing to move emails that clearly match the new bucket's purpose, even if they also loosely fit their current bucket. The user created this bucket specifically to organize these kinds of emails.`
-      : undefined;
 
     const results = await classifyBatchWithFallback(batchItems, bucketContexts, userId, reclassifyContext);
     await Promise.allSettled(
@@ -185,34 +125,8 @@ export async function runReclassification(
     );
   }
 
+  console.log(`[reclassify] complete: moved=${movedCount} (tier2=${tier2Rows.length - (tier2Rows.length - (movedCount - tier3Count))} tier3=${tier3Count})`);
   onEvent({ type: 'reclassify_complete', movedCount, tier3Count });
-}
-
-function bestBucketAcrossAll(
-  embedding: number[],
-  exemplarsByBucket: Map<number, number[][]>,
-): { bucketId: number; sim: number; margin: number } | null {
-  let bestBucketId: number | null = null;
-  let best = 0;
-  let secondBest = 0;
-
-  for (const [bucketId, exemplars] of exemplarsByBucket) {
-    let bucketBest = 0;
-    for (const ex of exemplars) {
-      const sim = cosineSimilarity(embedding, ex);
-      if (sim > bucketBest) bucketBest = sim;
-    }
-    if (bucketBest > best) {
-      secondBest = best;
-      best = bucketBest;
-      bestBucketId = bucketId;
-    } else if (bucketBest > secondBest) {
-      secondBest = bucketBest;
-    }
-  }
-
-  if (bestBucketId === null) return null;
-  return { bucketId: bestBucketId, sim: best, margin: best - secondBest };
 }
 
 export async function runReclassifyDisplaced(
@@ -222,105 +136,70 @@ export async function runReclassifyDisplaced(
 ): Promise<void> {
   if (threadIds.length === 0) { onEvent({ type: 'reclassify_complete', movedCount: 0, tier3Count: 0 }); return; }
 
+  // DISTINCT ON: best bucket (shortest distance) per displaced thread
+  const result = await db.execute(sql`
+    SELECT DISTINCT ON (c.thread_id)
+      c.id,
+      c.thread_id      AS "threadId",
+      c.subject,
+      c.sender_name    AS "senderName",
+      c.sender_email   AS "senderEmail",
+      c.snippet,
+      c.security_flags AS "securityFlags",
+      b.id             AS "bestBucketId",
+      (c.embedding <=> b.embedding) AS distance
+    FROM ${classifications} c
+    CROSS JOIN ${buckets} b
+    WHERE c.user_id = ${userId}
+      AND c.bucket_id IS NULL
+      AND c.embedding IS NOT NULL
+      AND b.embedding IS NOT NULL
+      AND b.user_id = ${userId}
+    ORDER BY c.thread_id, distance ASC
+  `);
+
+  type DisplacedRow = {
+    id: number;
+    threadId: string;
+    subject: string;
+    senderName: string;
+    senderEmail: string;
+    snippet: string;
+    securityFlags: string[];
+    bestBucketId: number;
+    distance: number;
+  };
+
   const threadIdSet = new Set(threadIds);
-
-  const allEmails = await db
-    .select({
-      id: classifications.id,
-      threadId: classifications.threadId,
-      subject: classifications.subject,
-      senderName: classifications.senderName,
-      senderEmail: classifications.senderEmail,
-      snippet: classifications.snippet,
-      securityFlags: classifications.securityFlags,
-      bucketId: classifications.bucketId,
-      embedding: classifications.embedding,
-      confidence: classifications.confidence,
-    })
-    .from(classifications)
-    .where(and(eq(classifications.userId, userId), isNotNull(classifications.embedding)));
-
-  const emails = (allEmails as EmailRow[]).filter(
-    (e) => threadIdSet.has(e.threadId) && Array.isArray(e.embedding),
-  );
-
-  const bucketRows = await db
-    .select({ id: buckets.id, name: buckets.name, description: buckets.description, enrichedDescription: buckets.enrichedDescription })
-    .from(buckets)
-    .where(eq(buckets.userId, userId));
-
-  const exemplarRows = await db
-    .select({ bucketId: categoryExemplars.bucketId, embedding: categoryExemplars.embedding })
-    .from(categoryExemplars)
-    .innerJoin(buckets, eq(categoryExemplars.bucketId, buckets.id))
-    .where(eq(buckets.userId, userId));
-
-  const exemplarsByBucket = new Map<number, number[][]>();
-  for (const row of exemplarRows) {
-    if (!Array.isArray(row.embedding)) continue;
-    const list = exemplarsByBucket.get(row.bucketId) ?? [];
-    list.push(row.embedding as number[]);
-    exemplarsByBucket.set(row.bucketId, list);
-  }
-
-  const bucketContexts: BucketContext[] = bucketRows;
-  let movedCount = 0;
-  let tier3Count = 0;
-  const tier3Candidates: EmailRow[] = [];
-
-  const t0 = Date.now();
-
-  for (const batch of chunk(emails, 20)) {
-    const writeOps: Promise<unknown>[] = [];
-
-    for (const email of batch) {
-      const match = bestBucketAcrossAll(email.embedding as number[], exemplarsByBucket);
-      if (!match) continue;
-
-      if (match.sim > 0.70 && match.margin > 0.15) {
-        writeOps.push(
-          db.update(classifications)
-            .set({ bucketId: match.bucketId, classificationTier: 2, confidence: match.sim })
-            .where(eq(classifications.id, email.id)),
-        );
-        onEvent({ type: 'classification_result', threadId: email.threadId, bucketId: match.bucketId, tier: 2, confidence: match.sim });
-        movedCount++;
-      } else if (match.sim > 0.50) {
-        tier3Candidates.push(email);
-      }
-      // else: leave uncategorized, confidence too low
-    }
-
-    await Promise.allSettled(writeOps);
-  }
-
-  console.log(`[reclassify-displaced] evaluated ${emails.length} emails in ${Date.now() - t0}ms`);
-  console.log(`[reclassify-displaced] tier3 candidates: ${tier3Candidates.length} of ${emails.length}`);
-
-  const batches = chunk(tier3Candidates, 12);
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    onEvent({ type: 'tier3_progress', current: (i + 1) * batch.length, total: tier3Candidates.length, batchNumber: i + 1 });
-
-    const batchItems: EmailBatchItem[] = batch.map((c) => ({
-      threadId: c.threadId, subject: c.subject, senderName: c.senderName,
-      senderEmail: c.senderEmail, snippet: c.snippet, securityFlags: c.securityFlags,
+  const rows = (result.rows as DisplacedRow[])
+    .filter((r) => threadIdSet.has(r.threadId))
+    .map((r) => ({
+      ...r,
+      id: Number(r.id),
+      bestBucketId: Number(r.bestBucketId),
+      distance: Number(r.distance),
+      securityFlags: Array.isArray(r.securityFlags) ? r.securityFlags : [],
     }));
 
-    const results = await classifyBatchWithFallback(batchItems, bucketContexts, userId);
-    await Promise.allSettled(
-      results.map((r) => {
-        const candidate = batch.find((c) => c.threadId === r.threadId);
-        if (!candidate) return Promise.resolve();
-        movedCount++;
-        tier3Count++;
-        onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: r.bucketId, tier: 3, confidence: r.confidence });
-        return db.update(classifications)
-          .set({ bucketId: r.bucketId, classificationTier: 3, confidence: r.confidence, llmReasoning: r.reasoning })
-          .where(eq(classifications.id, candidate.id));
-      }),
-    );
-  }
+  const toReassign = rows.filter((r) => r.distance < 0.25);
+  const leftUncategorized = rows.filter((r) => r.distance >= 0.25);
 
-  onEvent({ type: 'reclassify_complete', movedCount, tier3Count });
+  console.log(`[reclassify-displaced] confident=${toReassign.length} leaving-uncategorized=${leftUncategorized.length}`);
+
+  let movedCount = 0;
+
+  // Only write confident reassignments — low-confidence rows stay bucketId=null
+  // for the full pipeline's multi-exemplar Tier 2 to handle correctly.
+  const writeOps = toReassign.map((r) => {
+    const confidence = 1 - r.distance;
+    onEvent({ type: 'classification_result', threadId: r.threadId, bucketId: r.bestBucketId, tier: 2, confidence });
+    movedCount++;
+    return db.update(classifications)
+      .set({ bucketId: r.bestBucketId, classificationTier: 2, confidence })
+      .where(eq(classifications.id, r.id));
+  });
+  await Promise.allSettled(writeOps);
+
+  console.log(`[reclassify-displaced] complete: moved=${movedCount}`);
+  onEvent({ type: 'reclassify_complete', movedCount, tier3Count: 0 });
 }

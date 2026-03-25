@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PipelineEvent, PipelineMetrics } from '@/lib/pipeline/orchestrator';
 
@@ -8,9 +8,13 @@ interface ClassifyButtonProps {
   isDemo: boolean;
 }
 
+export interface ClassifyButtonHandle {
+  startClassify: () => void;
+}
+
 type ClassifyStatus = 'idle' | 'running' | 'complete' | 'error';
 
-export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
+const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(function ClassifyButton({ isDemo }, ref) {
   const router = useRouter();
   const [status, setStatus] = useState<ClassifyStatus>('idle');
   const [stage, setStage] = useState('');
@@ -19,6 +23,7 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
   const [tier3Total, setTier3Total] = useState<number | null>(null);
   const [metrics, setMetrics] = useState<PipelineMetrics | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleEvent(event: PipelineEvent) {
     switch (event.type) {
@@ -39,9 +44,7 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
         setProgress({ current: event.current, total: event.total });
         break;
       case 'classification_result':
-        if (event.tier === 3) {
-          setTier3Done((n) => n + 1);
-        }
+        if (event.tier === 3) setTier3Done((n) => n + 1);
         break;
       case 'sync_complete': setProgress(null); setStage('Analyzing emails...'); break;
       case 'embed_complete': setStage('Running security scan...'); break;
@@ -55,6 +58,12 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
         setMetrics(event.metrics);
         setStatus('complete');
         router.refresh();
+        // Auto-reset to idle after 3s
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(() => {
+          setStatus('idle');
+          setMetrics(null);
+        }, 3000);
         break;
       case 'error':
         setStatus('error');
@@ -64,10 +73,13 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
   }
 
   async function startClassify() {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     setStatus('running');
     setProgress(null);
     setTier3Done(0);
     setTier3Total(null);
+    setMetrics(null);
+    setErrorMessage('');
     setStage(isDemo ? 'Classifying demo data...' : 'Starting pipeline...');
 
     const response = await fetch('/api/classify', {
@@ -105,50 +117,30 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
     setStatus((s) => (s === 'running' ? 'complete' : s));
   }
 
-  if (status === 'idle') {
-    return (
-      <button className="btn-primary btn-md" onClick={startClassify}>
-        Classify Inbox
-      </button>
-    );
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useImperativeHandle(ref, () => ({ startClassify }), []);
+
+  // Button is always rendered — state controls label and disabled
+  const inTier3 = tier3Done > 0 || tier3Total !== null;
+  const runningLabel = inTier3
+    ? `Classifying... ${tier3Done}${tier3Total !== null ? `/${tier3Total}` : ''}`
+    : (stage || 'Classifying...');
 
   if (status === 'running') {
-    const inTier3 = tier3Done > 0 || tier3Total !== null;
-    const stageText = inTier3
-      ? `AI classifying... ${tier3Done}${tier3Total !== null ? `/${tier3Total}` : ''}`
-      : stage;
-    const displayProgress = inTier3 && tier3Total !== null
-      ? { current: tier3Done, total: tier3Total }
-      : progress;
-
     return (
       <div className="flex flex-col items-end gap-1">
         <div className="flex items-center gap-2 body-sm" style={{ color: 'var(--text-secondary)' }}>
           <span className="inline-block w-3 h-3 rounded-full border-2 animate-spin" style={{ borderColor: 'var(--accent-primary)', borderTopColor: 'transparent' }} />
-          {stageText}
+          {runningLabel}
         </div>
-        {displayProgress && (
+        {progress && (
           <div className="flex items-center gap-2 body-sm" style={{ color: 'var(--text-tertiary)' }}>
             <div className="w-32 h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div className="h-full rounded-full transition-all duration-300" style={{ backgroundColor: 'var(--accent-primary)', width: `${Math.round((displayProgress.current / displayProgress.total) * 100)}%` }} />
+              <div className="h-full rounded-full transition-all duration-300" style={{ backgroundColor: 'var(--accent-primary)', width: `${Math.round((progress.current / progress.total) * 100)}%` }} />
             </div>
-            {displayProgress.current}/{displayProgress.total}
+            {progress.current}/{progress.total}
           </div>
         )}
-      </div>
-    );
-  }
-
-  if (status === 'complete' && metrics) {
-    return (
-      <div className="flex items-center gap-3">
-        <span className="body-sm" style={{ color: 'var(--color-success)' }}>
-          ✓ {metrics.totalThreads} emails classified
-        </span>
-        <button className="btn-ghost btn-sm" onClick={() => setStatus('idle')}>
-          Classify Again
-        </button>
       </div>
     );
   }
@@ -164,5 +156,12 @@ export default function ClassifyButton({ isDemo }: ClassifyButtonProps) {
     );
   }
 
-  return null;
-}
+  // idle or complete — always show the primary button
+  return (
+    <button className="btn-primary btn-md" onClick={startClassify}>
+      {status === 'complete' && metrics ? `✓ ${metrics.totalThreads} classified` : 'Classify Inbox'}
+    </button>
+  );
+});
+
+export default ClassifyButton;
