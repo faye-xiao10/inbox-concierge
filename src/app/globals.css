@@ -231,3 +231,12 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* ─── Landing page node-float animations ────────────────────────────────────── */
+
+@keyframes lp-float-a { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(3px, -4px); } }
+@keyframes lp-float-b { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(-4px, 3px); } }
+@keyframes lp-float-c { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(4px, 3px); } }
+@keyframes lp-float-d { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(-3px, -4px); } }
+@keyframes lp-float-e { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(2px, 5px); } }
+@keyframes lp-float-f { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(-5px, 2px); } }
