@@ -177,7 +177,7 @@ async function callGemini(
   );
 
   const usage = result.response.usageMetadata;
-  await logUsage(userId, 'gemini-2.5-flash', usage?.promptTokenCount ?? 0, usage?.candidatesTokenCount ?? null, 0.10, 0.40);
+  await logUsage(userId, 'gemini-2.5-flash', usage?.promptTokenCount ?? 0, usage?.candidatesTokenCount ?? null, 0.15, 0.60);
 
   const calls = result.response.functionCalls();
   if (!calls || calls.length === 0) throw new Error('Gemini returned no function calls');

@@ -4,11 +4,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EmailNode } from '@/lib/inbox/get-graph-data';
 import type { FilterState } from './filter-types';
 import { DEFAULT_FILTER_STATE } from './filter-types';
+import type { PipelineMetrics } from '@/lib/pipeline/orchestrator';
 import EmailGraph from './email-graph';
 import FilterPanel from './filter-panel';
+import MetricsPanel from './metrics-panel';
 
 interface GraphViewProps {
   isDemo?: boolean;
+  metrics?: PipelineMetrics | null;
+  isRunning?: boolean;
 }
 
 interface Toast {
@@ -16,7 +20,7 @@ interface Toast {
   visible: boolean;
 }
 
-export default function GraphView({ isDemo }: GraphViewProps) {
+export default function GraphView({ isDemo, metrics = null, isRunning = false }: GraphViewProps) {
   const [nodes, setNodes] = useState<EmailNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterState, setFilterState] = useState<FilterState>(DEFAULT_FILTER_STATE);
@@ -164,6 +168,8 @@ export default function GraphView({ isDemo }: GraphViewProps) {
       <p className="text-sm text-center mt-2 opacity-50 select-none">
         Each dot is an email &nbsp;·&nbsp; Size = urgency &nbsp;·&nbsp; Color = bucket &nbsp;·&nbsp; Opacity = recency &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Drag a node to reclassify
       </p>
+
+      <MetricsPanel metrics={metrics} isRunning={isRunning} />
 
       {/* Toast */}
       <div style={{

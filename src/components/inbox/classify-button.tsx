@@ -7,6 +7,7 @@ import type { PipelineEvent, PipelineMetrics } from '@/lib/pipeline/orchestrator
 interface ClassifyButtonProps {
   isDemo: boolean;
   onRunningChange?: (isRunning: boolean) => void;
+  onMetrics?: (metrics: PipelineMetrics) => void;
 }
 
 export interface ClassifyButtonHandle {
@@ -15,7 +16,7 @@ export interface ClassifyButtonHandle {
 
 type ClassifyStatus = 'idle' | 'running' | 'complete' | 'error';
 
-const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(function ClassifyButton({ isDemo, onRunningChange }, ref) {
+const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(function ClassifyButton({ isDemo, onRunningChange, onMetrics }, ref) {
   const router = useRouter();
   const [status, setStatus] = useState<ClassifyStatus>('idle');
   const [stage, setStage] = useState('');
@@ -57,6 +58,7 @@ const ClassifyButton = forwardRef<ClassifyButtonHandle, ClassifyButtonProps>(fun
       case 'triage_complete': setStage('Finishing up...'); break;
       case 'pipeline_complete':
         setMetrics(event.metrics);
+        onMetrics?.(event.metrics);
         setStatus('complete');
         onRunningChange?.(false);
         router.refresh();

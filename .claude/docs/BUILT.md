@@ -378,6 +378,7 @@ src/
       graph-tooltip.tsx
       graph-utils.ts
       graph-view.tsx
+      metrics-panel.tsx
     inbox/
       bucket-tabs.tsx
       classify-button.tsx
@@ -430,6 +431,18 @@ src/
     reseed-direct.ts
     reseed-exemplars.ts
 ```
+
+### Step 18: Pipeline Metrics Panel + Patches (branch: feature/step-18-metrics-panel)
+
+**New files:**
+- `src/components/graph/metrics-panel.tsx` — "Pipeline Performance" heading; 6-card 3-col grid; pulse placeholders while running; cards: AI Efficiency (%), Classification Method (tier breakdown with counts), Total AI Operations, Avg Confidence (per-tier breakdown), Exemplars (with per-bucket subtext), Processing Time; System Methodology legend below; CSS variables throughout
+
+**Modified files:**
+- `src/lib/pipeline/orchestrator.ts` — `PipelineMetrics` type: added `exemplarsByBucket?: { bucketName; count }[]`, `avgConfidenceByTier: { tier; avg }[]`; removed `estimatedCost`; `computeMetrics` filters `aiUsage` by `createdAt >= runStart` so llmCalls reflects this run only; added per-bucket exemplar query (join + groupBy); added `AVG(confidence) GROUP BY tier` query; imports: `gte`, `sql`, `isNotNull` added; `sum` removed
+- `src/lib/pipeline/llm-classify.ts` — fixed Gemini 2.5 Flash pricing: `0.10/0.40` → `0.15/0.60` per million tokens
+- `src/components/graph/graph-view.tsx` — added `metrics?: PipelineMetrics | null` and `isRunning?: boolean` props; renders `<MetricsPanel>` below graph container
+- `src/components/inbox/bucket-tabs.tsx` — added `pipelineMetrics` state; `onRunningChange` clears metrics on run start; added `onMetrics={setPipelineMetrics}` to ClassifyButton; passes `metrics` + `isRunning` to GraphView
+- `src/components/inbox/classify-button.tsx` — added `onMetrics?: (m: PipelineMetrics) => void`; fires on `pipeline_complete`
 
 ## Known Issues
 (none)
