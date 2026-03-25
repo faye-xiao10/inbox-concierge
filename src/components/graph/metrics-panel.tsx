@@ -66,7 +66,7 @@ export default function MetricsPanel({ metrics, isRunning }: MetricsPanelProps) 
       <TierRow label="Gmail Native" code="T0" count={metrics.tier0Count} color="var(--text-primary)" isBold />
       <TierRow label="Domain Rules" code="T1" count={metrics.tier1Count} color="var(--text-secondary)" />
       <TierRow label="Vector Memory" code="T2" count={metrics.tier2Count} color="var(--text-secondary)" />
-      <TierRow label="Claude 3.5 (LLM)" code="T3" count={metrics.tier3Count} color="var(--accent-primary)" isBold />
+      <TierRow label="Claude Sonnet 4.6" code="T3" count={metrics.tier3Count} color="var(--accent-primary)" isBold />
     </div>
   ) : null;
 
@@ -112,7 +112,7 @@ export default function MetricsPanel({ metrics, isRunning }: MetricsPanelProps) 
           <MethodologyItem code="T0" title="Gmail Native" desc="Fastest. Uses existing Google system labels and metadata." />
           <MethodologyItem code="T1" title="Domain Rules" desc="Deterministic. Matches trusted sender domains with 100% accuracy." />
           <MethodologyItem code="T2" title="Vector Memory" desc="Learned. Uses pgvector similarity search to match previous user actions." />
-          <MethodologyItem code="T3" title="Claude 3.5" desc="Intelligent. Deep reasoning fallback for complex or unseen email types." />
+          <MethodologyItem code="T3" title="Claude Sonnet 4.6" desc="Intelligent. Deep reasoning fallback for complex or unseen email types." />
         </div>
       </div>
     </div>
