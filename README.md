@@ -2,7 +2,6 @@
 
 An AI-powered Gmail triage system that classifies your inbox using a 4-tier pipeline — from zero-cost rule matching to semantic vector search to batch LLM classification — and visualizes the results as an interactive D3 force graph.
 
-Built as a take-home assignment for Tenex (Forward Deployed Engineer role).
 
 **Live demo:** [inbox-concierge.vercel.app](https://inbox-concierge.vercel.app) · **Demo mode:** no Gmail required
 
